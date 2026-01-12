@@ -56,30 +56,23 @@ Press Ctrl+C to stop the test and finalize the log files.
 ## 🔧 Customization
 
 You can modify the following variables at the top of the script:
-
+```powershell
 $target   = "1.1.1.1"    # Target IP or hostname
 $interval = 100          # Delay between pings in milliseconds
-
+```
 ## 📊 CSV Format
 
 The CSV file includes:
-
+```powershell
 Timestamp	Status	Sequence	Message	DelayMs
 2026-01-12 09:23:41.207	OK	5	Reply from 1.1.1.1: bytes=32 ...	102
 2026-01-12 09:23:42.222	TIMEOUT	6		1997
-
+```
 This is ideal for post-analysis in tools like Excel or data processing scripts.
 
 ## 📁 Requirements
 
-Windows PowerShell (tested on Windows 10/11)
-No external dependencies
-Uses native ping.exe
+- Windows PowerShell (tested on Windows 10/11)
+- No external dependencies
+- Uses native ping.exe
 
-## 🧩 Possible Future Enhancements
-
-Latency & packet loss summary every X seconds
-Live latency graphs (optional GUI)
-Email/Teams alerts on sustained packet loss
-Daily or hourly log rotation
-Output to InfluxDB / Prometheus exporter
