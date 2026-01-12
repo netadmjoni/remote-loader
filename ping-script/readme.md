@@ -36,6 +36,7 @@ This PowerShell script provides a continuous ping monitor and packet loss logger
 ## ✅ Output Example
 
 [2026-01-12 09:23:41.207] ✅ Reply from 1.1.1.1: bytes=32 time=58ms TTL=51
+
 [2026-01-12 09:23:42.222] ❌ Timeout seq=10 (~1997ms)
 
 ### 📂 Example files created:
@@ -52,14 +53,14 @@ This PowerShell script provides a continuous ping monitor and packet loss logger
    .\ping.ps1
 Press Ctrl+C to stop the test and finalize the log files.
 
-🔧 Customization
+## 🔧 Customization
 
 You can modify the following variables at the top of the script:
 
 $target   = "1.1.1.1"    # Target IP or hostname
 $interval = 100          # Delay between pings in milliseconds
 
-📊 CSV Format
+## 📊 CSV Format
 
 The CSV file includes:
 
@@ -69,13 +70,13 @@ Timestamp	Status	Sequence	Message	DelayMs
 
 This is ideal for post-analysis in tools like Excel or data processing scripts.
 
-📁 Requirements
+## 📁 Requirements
 
 Windows PowerShell (tested on Windows 10/11)
 No external dependencies
 Uses native ping.exe
 
-🧩 Possible Future Enhancements
+## 🧩 Possible Future Enhancements
 
 Latency & packet loss summary every X seconds
 Live latency graphs (optional GUI)
