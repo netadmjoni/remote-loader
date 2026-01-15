@@ -112,3 +112,18 @@ If you run with `--no-log` (or `-n`):
 - no log directory is created
 - no TXT/CSV files are created
 - only terminal output + final summary are shown
+
+
+## CSV format
+
+Columns:
+
+| Column            | Description |
+|------------------|-------------|
+| `timestamp`       | Local timestamp with milliseconds |
+| `event`           | `OK`, `LOST`, `UNREACHABLE`, `ALERT`, `RECOVER`, `INFO` |
+| `seq`             | ICMP sequence number (when available) |
+| `rtt_ms`          | RTT for `OK` / `RECOVER` rows (when available) |
+| `consecutive_loss`| Current loss streak length (in probes) |
+| `loss_window_ms`  | Approx outage duration (`consecutive_loss * interval_ms`) |
+| `message`         | Short summary (or raw line for certain events) |
