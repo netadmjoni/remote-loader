@@ -127,3 +127,23 @@ Columns:
 | `consecutive_loss`| Current loss streak length (in probes) |
 | `loss_window_ms`  | Approx outage duration (`consecutive_loss * interval_ms`) |
 | `message`         | Short summary (or raw line for certain events) |
+
+
+## Notes / interpretation tips
+
+- A 100ms interval makes it easy to map “missed probes” to “approx outage time”.
+- UNREACHABLE usually indicates a routing/path issue rather than a brief Wi-Fi roam.
+  - It is still counted as loss because connectivity is not available.
+- ICMP can be treated differently than application traffic (QoS, ACLs, rate limits).
+  - Use the timestamps to correlate with application logs and roaming telemetry.
+
+## Stop / summary
+
+Press Ctrl+C to stop.
+The script prints a summary including:
+
+- total `OK` replies
+- total loss events (`LOST` + `UNREACHABLE`)
+- maximum consecutive loss streak and its approximate loss window
+
+When logging is enabled, the summary is also appended to the TXT log.
