@@ -1,78 +1,94 @@
+# Wi-Fi Roaming / Link-Loss Ping Monitor (WSL/Linux)
 
-# Continuous Ping Logger for Windows (PowerShell)
-
-This PowerShell script provides a continuous ping monitor and packet loss logger for Windows environments. It is designed for network diagnostics and long-running connectivity tests (e.g. field technician use, site monitoring, wireless link validation, etc.).
-
-## 📌 Features
-
-- Continuous `ping.exe` execution with 100ms interval
-- Tracks **successful replies** and **timeouts**
-- Automatically timestamps each ping result (millisecond resolution)
-- Detects and logs **packet loss**
-- Logs output to:
-  - 📝 Plain-text `.txt` file (for humans)
-  - 📊 `.csv` file (for analysis/graphing in Excel, Power BI, Python, etc.)
-- Gracefully stops with `Ctrl+C`
-- Minimal output, no duplication in console
+This script is a fast-interval ping monitor intended for diagnosing brief connectivity drops (e.g., roaming events) when pinging a moving machine over Wi-Fi. It emits **clear, timestamped terminal output** and writes **TXT + CSV logs** with **human timestamps (ms precision)** for correlation with other logs (syslog, roaming/handoff logs, etc.).
 
 ---
 
-## ⚙️ How It Works
+## What it does
 
-- Launches `ping.exe -t` in the background.
-- Parses each output line using a streaming reader.
-- Each successful ping is tagged with:
-  - Timestamp
-  - Response time
-  - Sequence number
-- Missed replies (timeouts) are tracked using a manual sequence counter and logged with approximate delay.
-- Outputs are flushed in real time to:
-  - Console
-  - A timestamped `.txt` log file
-  - A `.csv` log file for structured analysis
+- Sends ICMP echo requests to a target at a fast interval (default **0.1s / 100ms**).
+- Detects and highlights:
+  - **Packet loss / no reply** (via `ping -O` “no answer yet” lines)
+  - **Unreachable conditions** (e.g., `Destination Net Unreachable`)
+- Tracks **consecutive loss** and computes a **loss window**:
+  - `loss_window_ms ≈ consecutive_loss * interval_ms`
+- Raises an **ALERT** once the loss window reaches a configured threshold (default **600ms**).
+- Prints timestamped events to the terminal and logs everything to disk.
 
 ---
 
-## ✅ Output Example
+## Why 100ms probes?
 
-[2026-01-12 09:23:41.207] ✅ Reply from 1.1.1.1: bytes=32 time=58ms TTL=51
+If you send a probe every 100ms, then each missed probe is roughly **100ms** of missed connectivity signal.
 
-[2026-01-12 09:23:42.222] ❌ Timeout seq=10 (~1997ms)
+Example:  
+- **600ms maximum outage** requirement  
+- ≈ **6 consecutive missed probes** at 100ms interval
 
-### 📂 Example files created:
-- `PingLog_20260112_092300.txt`
-- `PingLog_20260112_092300.csv`
+This makes it easy to see when you exceed your allowed “traffic loss” budget.
 
 ---
 
-## 🖥️ Usage
+## Terminal output legend
 
-1. Open PowerShell
-2. Run the script:
-   ```powershell
-   .\ping.ps1
-Press Ctrl+C to stop the test and finalize the log files.
+- ✅ **OK** — Reply received (includes `icmp_seq` and RTT)
+- ❌ **LOSS** — “no answer yet” for an `icmp_seq` (requires `ping -O`)
+- ❌ **UNREACHABLE** — Routing failure (`Destination ... Unreachable`, etc.)
+- 🚨 **ALERT** — Loss window ≥ threshold (e.g., 600ms)
+- 🟦 **RECOVER** — First reply after a loss streak
+- ⚠️ **INFO** — Other ping output (banner / misc), still logged for reference
 
-## 🔧 Customization
+---
 
-You can modify the following variables at the top of the script:
-```powershell
-$target   = "1.1.1.1"    # Target IP or hostname
-$interval = 100          # Delay between pings in milliseconds
+## Files created
+
+The script writes two timestamped files in the current directory:
+
+- **TXT log**: human-readable, includes `RAW:` ping output lines (great for correlation)
+- **CSV log**: structured events for analysis
+
+Example filenames:
+
+- `ping_10_194_240_11_20260115_220423.log`
+- `ping_10_194_240_11_20260115_220423.csv`
+
+---
+
+## CSV format
+
+Columns:
+
+| Column | Meaning |
+|---|---|
+| `timestamp` | Human timestamp with milliseconds (local time) |
+| `event` | `OK`, `LOST`, `UNREACHABLE`, `ALERT`, `RECOVER`, `INFO` |
+| `seq` | ICMP sequence number when available |
+| `rtt_ms` | RTT in ms for `OK/RECOVER` rows (when available) |
+| `consecutive_loss` | Current loss streak length (in probes) |
+| `loss_window_ms` | `consecutive_loss * interval_ms` (approx outage duration) |
+| `message` | Short description or raw ping line |
+
+---
+
+## Usage
+
+> **Tip:** On many systems, intervals <200ms require `sudo`.
+
+```bash
+sudo ./wifi_loss_monitor.sh <target_ip> [interval_seconds] [threshold_ms]
 ```
-## 📊 CSV Format
 
-The CSV file includes:
-```powershell
-Timestamp	Status	Sequence	Message	DelayMs
-2026-01-12 09:23:41.207	OK	5	Reply from 1.1.1.1: bytes=32 ...	102
-2026-01-12 09:23:42.222	TIMEOUT	6		1997
+## Examples
+```bash
+sudo ./wifi_loss_monitor.sh 10.194.240.11
+sudo ./wifi_loss_monitor.sh 10.194.240.11 0.1 600
+sudo ./wifi_loss_monitor.sh 1.1.1.1 0.1 600
 ```
-This is ideal for post-analysis in tools like Excel or data processing scripts.
 
-## 📁 Requirements
+## Requirements / Notes
 
-- Windows PowerShell (tested on Windows 10/11)
-- No external dependencies
-- Uses native ping.exe
-
+- Intended for WSL/Linux with iputils-ping installed.
+- Fast intervals (like 0.1s) often require elevated permissions:
+- run with sudo, or configure capabilities for ping.
+- LOSS detection relies on ping -O, which prints “no answer yet” lines.
+- ICMP is a useful proxy for connectivity, but some networks treat ICMP differently from application traffic. Always correlate with your other logs when validating strict requirements.
