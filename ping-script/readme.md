@@ -98,24 +98,17 @@ Example:
 Logging is enabled by default. Two files are created in the current directory (or --log-dir):
 
 - TXT log: `ping_<target>_<timestamp>.log`
-  - Includes RAW: lines from ping output for troubleshooting and correlation.
-
-CSV log: ping_<target>_<timestamp>.csv
-
-Structured event records suitable for analysis.
+  - Includes `RAW:` lines from ping output for troubleshooting and correlation.
+- CSV log: `ping_<target>_<timestamp>.csv`
+  - Structured event records suitable for analysis.
 
 Example filenames:
+- `ping_10_194_240_11_20260115_220423.log`
+- `ping_10_194_240_11_20260115_220423.csv`
 
-ping_10_194_240_11_20260115_220423.log
+# Console-only mode
 
-ping_10_194_240_11_20260115_220423.csv
-
-Console-only mode
-
-If you run with --no-log (or -n):
-
-no log directory is created
-
-no TXT/CSV files are created
-
-only terminal output + final summary are shown
+If you run with `--no-log` (or `-n`):
+- no log directory is created
+- no TXT/CSV files are created
+- only terminal output + final summary are shown
