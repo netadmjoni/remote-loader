@@ -1,3 +1,5 @@
+### This was a first test, not suitable for sub 1s ping
+
 $target = "1.1.1.1"
 $interval = 100
 $seq = 0
