@@ -83,21 +83,39 @@ sudo ./wifi_loss_monitor.sh -t 10.194.240.11 -i 0.1 -T 600 -d /tmp
 - 🟦 RECOVER — First reply after a loss streak
 - ⚠️ INFO — Other ping output lines (banner / misc diagnostics)
 
+Example:
+```bash
+[2026-01-15 22:04:24.317] ❌ LOSS icmp_seq=4 (consecutive=6, window≈600ms)
+[2026-01-15 22:04:24.317] 🚨 ALERT: loss window >= 600ms (now≈600ms)
+[2026-01-15 22:04:25.120] 🟦 RECOVER: reply after 8 lost (≈800ms)
+[2026-01-15 22:04:25.120] ✅ OK icmp_seq=42 rtt=19.8ms
+```
 
-## Log Files (when logging is enabled)
 
-- Two files are created in the current directory (or --log-dir):
 
-- - TXT log (ping_<target>_<timestamp>.log)
+## Logging
 
-Includes RAW: lines from ping output for troubleshooting and correlation.
+Logging is enabled by default. Two files are created in the current directory (or --log-dir):
 
-CSV log (ping_<target>_<timestamp>.csv)
+- TXT log: `ping_<target>_<timestamp>.log`
+  - Includes RAW: lines from ping output for troubleshooting and correlation.
 
-Structured event records suitable for analysis and correlation.
+CSV log: ping_<target>_<timestamp>.csv
+
+Structured event records suitable for analysis.
 
 Example filenames:
 
 ping_10_194_240_11_20260115_220423.log
 
 ping_10_194_240_11_20260115_220423.csv
+
+Console-only mode
+
+If you run with --no-log (or -n):
+
+no log directory is created
+
+no TXT/CSV files are created
+
+only terminal output + final summary are shown
