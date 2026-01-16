@@ -29,13 +29,13 @@ A fast-interval ICMP monitor for diagnosing brief connectivity drops (e.g., Wi-F
 ## Installation
 
 ```bash
-chmod +x wifi_loss_monitor.sh
+chmod +x loss_monitor.sh
 ```
 
 ## Usage (named options, any order)
 
 ```bash
-sudo ./wifi_loss_monitor.sh --target <ip_or_host> --interval <seconds> --threshold <ms> [--timeout <seconds>] [--no-log] [--log-dir <dir>]
+sudo ./loss_monitor.sh --target <ip_or_host> --interval <seconds> --threshold <ms> [--timeout <seconds>] [--no-log] [--log-dir <dir>]
 ```
 
 ## Short options
@@ -55,23 +55,23 @@ sudo ./wifi_loss_monitor.sh --target <ip_or_host> --interval <seconds> --thresho
 
 Typical roaming test (100ms probes, 600ms limit)
 ```bash
-sudo ./wifi_loss_monitor.sh --target 10.194.240.11 --interval 0.1 --threshold 600
+sudo ./loss_monitor.sh --target 10.194.240.11 --interval 0.1 --threshold 600
 ```
 - Console-only (no files created)
 ```bash
-sudo ./wifi_loss_monitor.sh -t 10.194.240.11 -i 0.1 -T 600 -n
+sudo ./loss_monitor.sh -t 10.194.240.11 -i 0.1 -T 600 -n
 ```
 - Custom threshold (700ms)
 ```bash
-sudo ./wifi_loss_monitor.sh -t 1.1.1.1 -i 0.1 -T 700
+sudo ./loss_monitor.sh -t 1.1.1.1 -i 0.1 -T 700
 ```
 - Adjust per-probe timeout (ping -W)
 ```bash
-sudo ./wifi_loss_monitor.sh -t 10.194.240.11 -i 0.1 -T 600 -W 1
+sudo ./loss_monitor.sh -t 10.194.240.11 -i 0.1 -T 600 -W 1
 ```
 - Save logs to a specific directory
 ```bash
-sudo ./wifi_loss_monitor.sh -t 10.194.240.11 -i 0.1 -T 600 -d /tmp
+sudo ./loss_monitor.sh -t 10.194.240.11 -i 0.1 -T 600 -d /tmp
 ```
 
 ## Terminal Output Legend
