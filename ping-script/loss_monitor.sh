@@ -5,7 +5,7 @@ set -u -o pipefail
 # Wi-Fi Roaming / Link-Loss Ping Monitor (WSL/Linux)
 #
 # Named-arg usage (order doesn't matter):
-#   sudo ./wifi_loss_monitor.sh --target <ip> --interval <sec> --threshold <ms> [--timeout <sec>] [--no-log] [--log-dir <dir>]
+#   sudo ./loss_monitor.sh --target <ip> --interval <sec> --threshold <ms> [--timeout <sec>] [--no-log] [--log-dir <dir>]
 #
 # Short options:
 #   -t <ip>     target
