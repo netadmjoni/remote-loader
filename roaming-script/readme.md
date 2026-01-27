@@ -1,5 +1,5 @@
 - Purpose:
-  - Continuously poll the Cisco WGB (C9167) once per second and show where it is associated (Parent AP) + signal level (RSSI).
+Continuously poll the Cisco WGB (C9167) once per second and show where it is associated (Parent AP) + signal level (RSSI).
 
 - Requirements (Linux / WSL):
  
