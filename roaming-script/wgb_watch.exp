@@ -1,0 +1,120 @@
+#!/usr/bin/expect -f
+# ---------------------------------------------------------------------------
+# HOW TO USE THIS SCRIPT
+#
+# Purpose:
+#   Continuously poll the Cisco WGB (C9167) once per second and show where it is
+#   associated (Parent AP) + signal level (RSSI).
+#
+# Requirements (Linux / WSL):
+#   sudo apt-get update
+#   sudo apt-get install -y expect
+#
+# Run (interactive login + enable):
+#   ./wgb_watch.exp <WGB_IP> <USERNAME> "<LOGIN_PASSWORD>" "<ENABLE_PASSWORD>" [interval_seconds]
+#
+# Example:
+#   ./wgb_watch.exp 10.194.240.11 admin "MyLoginPass" "MyEnablePass" 1
+#
+# Save output to a logfile:
+#   ./wgb_watch.exp 10.194.240.11 admin "MyLoginPass" "MyEnablePass" 1 | tee wgb_assoc.log
+#
+# Filter output with grep (show only important lines):
+#   Show Parent AP + RSSI lines:
+#     ./wgb_watch.exp 10.194.240.11 admin "MyLoginPass" "MyEnablePass" 1 | grep -E "Parent AP Name|RSSI"
+#
+# Useful grep options:
+#   -E              Enable extended regex (lets you use "A|B" OR matching)
+#   -i              Case-insensitive matching
+#   --line-buffered Print output immediately (good for live/streaming output)
+#   -n              Show line numbers
+#
+# Examples:
+#   Case-insensitive match:
+#     ... | grep -Ei "parent ap name|rssi"
+#
+#   Live output without buffering:
+#     ... | grep --line-buffered -E "Parent AP Name|RSSI"
+#
+#   Show extra lines around a match (context):
+#     ... | grep -A 5 "Parent AP Name"   # 5 lines AFTER
+#     ... | grep -B 5 "Parent AP Name"   # 5 lines BEFORE
+#     ... | grep -C 5 "Parent AP Name"   # 5 lines BEFORE+AFTER
+# ---------------------------------------------------------------------------
+
+
+set timeout 8
+
+# Only show remote output (not Expect debugging)
+exp_internal 0
+log_user 1
+
+set host     [lindex $argv 0]
+set user     [lindex $argv 1]
+set loginpw  [lindex $argv 2]
+set enablepw [lindex $argv 3]
+set interval [lindex $argv 4]
+if {$interval eq ""} { set interval 1 }
+
+# Start SSH
+spawn ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=10 $user@$host
+
+# First-time key prompt OR password prompt
+expect {
+    -re {Are you sure you want to continue connecting} {
+        send "yes\r"
+        exp_continue
+    }
+    -re {[Pp]assword:} {
+        send "$loginpw\r"
+    }
+    timeout {
+        puts "ERROR: SSH connect/login timed out"
+        exit 1
+    }
+}
+
+# Wait for exec prompt or already-enabled prompt
+expect {
+    -re {>$} {
+        send "enable\r"
+    }
+    -re {#$} {
+        # already enabled
+    }
+    timeout {
+        puts "ERROR: Did not see prompt after login"
+        exit 1
+    }
+}
+
+# If asked for enable password, send it
+expect {
+    -re {[Pp]assword:} {
+        send "$enablepw\r"
+        expect {
+            -re {#$} {}
+            timeout { puts "ERROR: Enable failed/timed out"; exit 1 }
+        }
+    }
+    -re {#$} {
+        # already in enable
+    }
+    timeout {
+        puts "ERROR: Enable prompt timed out"
+        exit 1
+    }
+}
+
+# Disable paging
+send "terminal length 0\r"
+expect -re {#$}
+
+# Poll forever
+while {1} {
+    send "show wgb dot11 associations\r"
+    expect -re {#$}
+    puts "\n----- [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}] -----\n"
+    sleep $interval
+}
+
