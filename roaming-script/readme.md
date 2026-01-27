@@ -19,4 +19,4 @@ Continuously poll the Cisco WGB (C9167) once per second and show where it is ass
 
 - Save output to a logfile:
 
-`./wgb_watch.exp 10.194.240.11 admin "MyLoginPass" "MyEnablePass" 1 | tee wgb_assoc.log`
+`./wgb_watch.exp 10.194.240.11 admin "MyLoginPass" "MyEnablePass" 1 | tee -a wgb_assoc.log`
