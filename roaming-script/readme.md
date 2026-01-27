@@ -1,4 +1,4 @@
-#HOW TO USE THIS SCRIPT
+##HOW TO USE THIS SCRIPT
 
 - Purpose:
   - Continuously poll the Cisco WGB (C9167) once per second and show where it is associated (Parent AP) + signal level (RSSI).
