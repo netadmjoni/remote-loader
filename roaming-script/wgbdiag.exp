@@ -1,0 +1,644 @@
+#!/usr/bin/expect -f
+#
+# wgbdiag.exp v1.1.1
+#
+# Cisco WGB association/roaming diagnostic tool.
+#
+# Purpose:
+#   Polls "show wgb dot11 associations" continuously over SSH/enable,
+#   prints compact terminal output, and writes full diagnostic data to CSV/logs.
+#
+# Usage:
+#   ./wgbdiag.exp <host> <user> "<loginpw>" "<enablepw>" [options]
+#
+# Basic example:
+#   ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE"
+#
+# Useful examples:
+#   ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --interval 1 --reconnect 60
+#   ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --log-dir ./truck-test
+#   ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --verbose-roam
+#   ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --no-roam-notify
+#   ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --no-log
+#   ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --debug
+#
+# Options:
+#   --interval <seconds>       Poll interval. Default: 1
+#   --reconnect <seconds>      Reconnect delay after failure. Default: 60
+#   --log-dir <folder>         Folder for automatic daily logs. Default: ./logs
+#   --log <file>               Specific human-readable log file
+#   --csv <file>               Specific CSV log file
+#   --no-log                   Disable all file logging. Terminal output only
+#   --roam-only                Only print roam/reconnect/info events to terminal
+#   --no-roam-notify           Do not print extra roam notification lines
+#   --verbose-roam             Print compact FROM -> TO roam lines in terminal
+#   --warn-same-channel        Print warning if roaming to another AP on same channel
+#   --debug                    Show raw SSH/CLI output for troubleshooting login/enable
+#   --help                     Show help
+#
+# Default logging:
+#   If --no-log is not used, the script creates ./logs automatically and writes:
+#     ./logs/wgb-YYYYMMDD.log
+#     ./logs/wgb-YYYYMMDD.csv
+#
+# Terminal output is intentionally compact, for live monitoring:
+#   2026-07-08 12:55:09 AP=MHO1109STV-421-o2930 RSSI=47 CH=40 RATE="173/173 Mbps" R=2
+#   2026-07-08 12:55:21 ROAM triggered
+#
+# CSV output keeps full details for analysis/TAC:
+#   MAC, state, auth, key-management, duration, from/to AP info, downtime, etc.
+#
+
+set VERSION "1.1.1"
+set timeout 8
+exp_internal 0
+log_user 0
+
+proc usage {} {
+  global VERSION
+  puts "wgbdiag v$VERSION"
+  puts ""
+  puts "Usage:"
+  puts "  ./wgbdiag.exp <host> <user> \"<loginpw>\" \"<enablepw>\" \[options\]"
+  puts ""
+  puts "Options:"
+  puts "  --interval <seconds>       Poll interval, default 1"
+  puts "  --reconnect <seconds>      Reconnect delay, default 60"
+  puts "  --log-dir <folder>         Log folder, default ./logs"
+  puts "  --log <file>               Specific human-readable log file"
+  puts "  --csv <file>               Specific CSV log file"
+  puts "  --no-log                   Disable all file logging, terminal only"
+  puts "  --roam-only                Only print roam/reconnect/info events to terminal"
+  puts "  --no-roam-notify           Do not print extra roam notification lines"
+  puts "  --verbose-roam             Print compact FROM -> TO roam lines"
+  puts "  --warn-same-channel        Warn if WGB roams between APs on same channel"
+  puts "  --debug                    Show raw SSH/CLI output for troubleshooting"
+  puts "  --help                     Show this help"
+}
+
+if {$argc < 4} {
+  usage
+  exit 1
+}
+
+set host     [lindex $argv 0]
+set user     [lindex $argv 1]
+set loginpw  [lindex $argv 2]
+set enablepw [lindex $argv 3]
+
+set interval 1
+set reconnect_delay 60
+set logdir "./logs"
+set logfile ""
+set csvfile ""
+set auto_log 1
+set roam_only 0
+set roam_notify 0
+set verbose_roam 0
+set warn_same_channel 0
+set debug 0
+
+set i 4
+while {$i < $argc} {
+  set arg [lindex $argv $i]
+
+  switch -- $arg {
+    "--interval" {
+      incr i
+      set interval [lindex $argv $i]
+    }
+    "--reconnect" {
+      incr i
+      set reconnect_delay [lindex $argv $i]
+    }
+    "--log-dir" {
+      incr i
+      set logdir [lindex $argv $i]
+    }
+    "--log" {
+      incr i
+      set logfile [lindex $argv $i]
+    }
+    "--csv" {
+      incr i
+      set csvfile [lindex $argv $i]
+    }
+    "--no-log" {
+      set auto_log 0
+      set logfile ""
+      set csvfile ""
+    }
+    "--roam-only" {
+      set roam_only 1
+    }
+    "--no-roam-notify" {
+      set roam_notify 0
+    }
+    "--roam-notify" {
+      set roam_notify 1
+    }
+    "--verbose-roam" {
+      set verbose_roam 1
+    }
+    "--warn-same-channel" {
+      set warn_same_channel 1
+    }
+    "--debug" {
+      set debug 1
+      log_user 1
+    }
+    "--help" {
+      usage
+      exit 0
+    }
+    default {
+      puts "ERROR Unknown option: $arg"
+      usage
+      exit 1
+    }
+  }
+
+  incr i
+}
+
+# In roam-only mode, show useful roam details by default
+if {$roam_only} {
+  set verbose_roam 1
+  set roam_notify 1
+}
+
+set down_since 0
+set wgb_spawn_id ""
+
+set last_ap ""
+set last_mac ""
+set last_ch ""
+set last_radio ""
+set last_rssi ""
+set last_rate ""
+
+proc timestamp {} {
+  return [clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]
+}
+
+proc ensure_logdir {} {
+  global logdir auto_log logfile csvfile
+
+  if {$auto_log || $logfile ne "" || $csvfile ne ""} {
+    if {![file exists $logdir]} {
+      file mkdir $logdir
+    }
+  }
+}
+
+proc current_logfile {} {
+  global logdir logfile auto_log
+
+  if {$logfile ne ""} {
+    return $logfile
+  }
+
+  if {!$auto_log} {
+    return ""
+  }
+
+  set today [clock format [clock seconds] -format {%Y%m%d}]
+  return "$logdir/wgb-$today.log"
+}
+
+proc current_csvfile {} {
+  global logdir csvfile auto_log
+
+  if {$csvfile ne ""} {
+    return $csvfile
+  }
+
+  if {!$auto_log} {
+    return ""
+  }
+
+  set today [clock format [clock seconds] -format {%Y%m%d}]
+  return "$logdir/wgb-$today.csv"
+}
+
+proc out {msg} {
+  puts $msg
+  flush stdout
+
+  set lf [current_logfile]
+  if {$lf ne ""} {
+    set fh [open $lf a]
+    puts $fh $msg
+    close $fh
+  }
+}
+
+proc csv_escape {val} {
+  set val [string map {"\"" "\"\""} $val]
+  return "\"$val\""
+}
+
+proc csv_init {} {
+  set cf [current_csvfile]
+
+  if {$cf eq ""} {
+    return
+  }
+
+  if {![file exists $cf] || [file size $cf] == 0} {
+    set fh [open $cf a]
+    puts $fh "timestamp,event,ap,mac,rssi,channel,rate,radio,state,auth,km,duration,from_ap,from_mac,from_rssi,from_channel,from_rate,from_radio,downtime_seconds"
+    close $fh
+  }
+}
+
+proc csv_out {event ap mac rssi ch rate radio state auth km dur from_ap from_mac from_rssi from_ch from_rate from_radio downtime} {
+  set cf [current_csvfile]
+
+  if {$cf eq ""} {
+    return
+  }
+
+  csv_init
+
+  set fields [list \
+    [timestamp] \
+    $event \
+    $ap \
+    $mac \
+    $rssi \
+    $ch \
+    $rate \
+    $radio \
+    $state \
+    $auth \
+    $km \
+    $dur \
+    $from_ap \
+    $from_mac \
+    $from_rssi \
+    $from_ch \
+    $from_rate \
+    $from_radio \
+    $downtime \
+  ]
+
+  set out_fields {}
+  foreach f $fields {
+    lappend out_fields [csv_escape $f]
+  }
+
+  set fh [open $cf a]
+  puts $fh [join $out_fields ","]
+  close $fh
+}
+
+proc safe_close {} {
+  global wgb_spawn_id
+
+  if {$wgb_spawn_id ne ""} {
+    catch {close -i $wgb_spawn_id}
+    catch {wait -i $wgb_spawn_id}
+    set wgb_spawn_id ""
+  }
+}
+
+proc field_after_colon {line} {
+  if {[regexp {:[[:space:]]*(.*)$} $line -> val]} {
+    return [string trim $val]
+  }
+  return ""
+}
+
+proc connect_wgb {} {
+  global host user loginpw enablepw wgb_spawn_id
+
+  spawn ssh \
+    -o StrictHostKeyChecking=accept-new \
+    -o ServerAliveInterval=10 \
+    -o ServerAliveCountMax=3 \
+    -o ConnectTimeout=5 \
+    $user@$host
+
+  set wgb_spawn_id $spawn_id
+
+  expect {
+    -i $wgb_spawn_id
+    -re {Are you sure you want to continue connecting} {
+      send -i $wgb_spawn_id "yes\r"
+      exp_continue
+    }
+    -re {[Pp]assword:} {
+      send -i $wgb_spawn_id "$loginpw\r"
+    }
+    timeout {
+      return 0
+    }
+    eof {
+      return 0
+    }
+  }
+
+  expect {
+    -i $wgb_spawn_id
+    -re {>} {
+      send -i $wgb_spawn_id "enable\r"
+    }
+    -re {#} {
+      # Already enabled
+    }
+    timeout {
+      return 0
+    }
+    eof {
+      return 0
+    }
+  }
+
+  expect {
+    -i $wgb_spawn_id
+    -re {[Pp]assword:} {
+      send -i $wgb_spawn_id "$enablepw\r"
+      expect {
+        -i $wgb_spawn_id
+        -re {#} {}
+        timeout { return 0 }
+        eof { return 0 }
+      }
+    }
+    -re {#} {
+      # Already enabled
+    }
+    timeout {
+      return 0
+    }
+    eof {
+      return 0
+    }
+  }
+
+  send -i $wgb_spawn_id "terminal length 0\r"
+
+  expect {
+    -i $wgb_spawn_id
+    -re {#} {
+      return 1
+    }
+    timeout {
+      return 0
+    }
+    eof {
+      return 0
+    }
+  }
+}
+
+proc parse_assoc {buf} {
+  set ap ""
+  set mac ""
+  set rssi ""
+  set ch ""
+  set rate ""
+  set radio ""
+  set dur ""
+  set state ""
+  set auth ""
+  set km ""
+
+  foreach rawline [split $buf "\n"] {
+    set line [string trim [string map {"\r" ""} $rawline]]
+
+    if {[string first "Parent AP Name" $line] >= 0} {
+      set ap [field_after_colon $line]
+    } elseif {[string first "Parent AP MAC" $line] >= 0} {
+      set mac [field_after_colon $line]
+    } elseif {[string first "RSSI" $line] >= 0} {
+      set rssi [field_after_colon $line]
+    } elseif {[string first "Channel" $line] >= 0} {
+      set ch [field_after_colon $line]
+    } elseif {[string first "Current Datarate (Tx/Rx)" $line] >= 0} {
+      set rate [field_after_colon $line]
+    } elseif {[string first "Uplink Radio ID" $line] >= 0} {
+      set radio [field_after_colon $line]
+    } elseif {[string first "Connected Duration" $line] >= 0} {
+      set dur [field_after_colon $line]
+    } elseif {[string first "Uplink State" $line] >= 0} {
+      set state [field_after_colon $line]
+    } elseif {[string first "Auth Type" $line] >= 0} {
+      set auth [field_after_colon $line]
+    } elseif {[string first "Key management Type" $line] >= 0} {
+      set km [field_after_colon $line]
+    }
+  }
+
+  return [list $ap $mac $rssi $ch $rate $radio $dur $state $auth $km]
+}
+
+proc human_sample {ap rssi ch rate radio} {
+  out "[timestamp] AP=$ap RSSI=$rssi CH=$ch RATE=\"$rate\" R=$radio"
+}
+
+proc human_roam {from_ap to_ap from_rssi rssi from_ch ch from_radio radio from_rate rate} {
+  global verbose_roam roam_notify
+
+  if {!$roam_notify} {
+    return
+  }
+
+  if {$verbose_roam} {
+    out "[timestamp] ROAM $from_ap -> $to_ap RSSI=$from_rssi->$rssi CH=$from_ch->$ch R=$from_radio->$radio RATE=\"$from_rate\"->\"$rate\""
+  } else {
+    out "[timestamp] ROAM triggered"
+  }
+}
+
+ensure_logdir
+csv_init
+
+out "[timestamp] INFO wgbdiag v$VERSION starting HOST=$host INTERVAL=${interval}s RECONNECT=${reconnect_delay}s ROAM_ONLY=$roam_only ROAM_NOTIFY=$roam_notify VERBOSE_ROAM=$verbose_roam WARN_SAME_CHANNEL=$warn_same_channel LOGDIR=$logdir LOG=[current_logfile] CSV=[current_csvfile]"
+
+while {1} {
+  out "[timestamp] INFO Connecting to $host..."
+
+  if {![connect_wgb]} {
+    if {$down_since == 0} {
+      set down_since [clock seconds]
+    }
+
+    set down_for [expr {[clock seconds] - $down_since}]
+    out "[timestamp] WARN Could not connect/login/enable. Down for ${down_for}s. Retrying in ${reconnect_delay}s..."
+
+    csv_out "CONNECT_FAIL" \
+      "" "" "" "" "" "" "" "" "" "" \
+      "" "" "" "" "" "" \
+      $down_for
+
+    safe_close
+    sleep $reconnect_delay
+    continue
+  }
+
+  if {$down_since != 0} {
+    set down_for [expr {[clock seconds] - $down_since}]
+    out "[timestamp] INFO Connected after ${down_for}s downtime"
+
+    csv_out "CONNECTED_AFTER_DOWN" \
+      "" "" "" "" "" "" "" "" "" "" \
+      "" "" "" "" "" "" \
+      $down_for
+
+    set down_since 0
+  } else {
+    out "[timestamp] INFO Connected"
+
+    csv_out "CONNECTED" \
+      "" "" "" "" "" "" "" "" "" "" \
+      "" "" "" "" "" "" \
+      ""
+  }
+
+  while {1} {
+    send -i $wgb_spawn_id "show wgb dot11 associations\r"
+
+    expect {
+      -i $wgb_spawn_id
+      -re {#} {
+        set buf $expect_out(buffer)
+        set parsed [parse_assoc $buf]
+
+        set ap    [lindex $parsed 0]
+        set mac   [lindex $parsed 1]
+        set rssi  [lindex $parsed 2]
+        set ch    [lindex $parsed 3]
+        set rate  [lindex $parsed 4]
+        set radio [lindex $parsed 5]
+        set dur   [lindex $parsed 6]
+        set state [lindex $parsed 7]
+        set auth  [lindex $parsed 8]
+        set km    [lindex $parsed 9]
+
+        set is_initial 0
+        set is_roam 0
+        set is_same_channel 0
+        set is_radio_change 0
+
+        if {$last_ap eq "" && $ap ne ""} {
+          set is_initial 1
+        } elseif {$ap ne "" && ($ap ne $last_ap || $mac ne $last_mac)} {
+          set is_roam 1
+
+          if {$last_ch ne "" && $ch ne "" && $ch eq $last_ch} {
+            set is_same_channel 1
+          }
+
+          if {$last_radio ne "" && $radio ne "" && $radio ne $last_radio} {
+            set is_radio_change 1
+          }
+        } elseif {$ap ne "" && $radio ne "" && $last_radio ne "" && $radio ne $last_radio} {
+          set is_radio_change 1
+        }
+
+        if {$is_initial} {
+          if {!$roam_only} {
+            human_sample $ap $rssi $ch $rate $radio
+          } else {
+            out "[timestamp] INITIAL_AP $ap RSSI=$rssi CH=$ch RATE=\"$rate\" R=$radio"
+          }
+
+          csv_out "INITIAL_AP" \
+            $ap $mac $rssi $ch $rate $radio $state $auth $km $dur \
+            "" "" "" "" "" "" \
+            ""
+
+        } elseif {$is_roam} {
+          human_roam $last_ap $ap $last_rssi $rssi $last_ch $ch $last_radio $radio $last_rate $rate
+
+          csv_out "ROAM" \
+            $ap $mac $rssi $ch $rate $radio $state $auth $km $dur \
+            $last_ap $last_mac $last_rssi $last_ch $last_rate $last_radio \
+            ""
+
+          if {$is_same_channel && $warn_same_channel} {
+            out "[timestamp] WARN SAME_CHANNEL_ROAM $last_ap -> $ap CH=$ch RSSI=$last_rssi->$rssi R=$last_radio->$radio"
+          }
+
+          if {$is_same_channel} {
+            csv_out "SAME_CHANNEL_ROAM" \
+              $ap $mac $rssi $ch $rate $radio $state $auth $km $dur \
+              $last_ap $last_mac $last_rssi $last_ch $last_rate $last_radio \
+              ""
+          }
+
+          if {$is_radio_change} {
+            # Keep radio-change in CSV. Terminal already shows it in verbose roam mode.
+            csv_out "RADIO_CHANGE" \
+              $ap $mac $rssi $ch $rate $radio $state $auth $km $dur \
+              $last_ap $last_mac $last_rssi $last_ch $last_rate $last_radio \
+              ""
+          }
+
+        } else {
+          if {!$roam_only} {
+            human_sample $ap $rssi $ch $rate $radio
+          }
+
+          csv_out "SAMPLE" \
+            $ap $mac $rssi $ch $rate $radio $state $auth $km $dur \
+            "" "" "" "" "" "" \
+            ""
+
+          if {$is_radio_change} {
+            csv_out "RADIO_CHANGE" \
+              $ap $mac $rssi $ch $rate $radio $state $auth $km $dur \
+              $last_ap $last_mac $last_rssi $last_ch $last_rate $last_radio \
+              ""
+          }
+        }
+
+        if {$ap ne ""} {
+          set last_ap $ap
+          set last_mac $mac
+          set last_ch $ch
+          set last_radio $radio
+          set last_rssi $rssi
+          set last_rate $rate
+        }
+
+        sleep $interval
+      }
+
+      timeout {
+        if {$down_since == 0} {
+          set down_since [clock seconds]
+        }
+
+        out "[timestamp] WARN Command timed out. Reconnecting..."
+
+        csv_out "COMMAND_TIMEOUT" \
+          "" "" "" "" "" "" "" "" "" "" \
+          $last_ap $last_mac $last_rssi $last_ch $last_rate $last_radio \
+          ""
+
+        break
+      }
+
+      eof {
+        if {$down_since == 0} {
+          set down_since [clock seconds]
+        }
+
+        out "[timestamp] WARN SSH session closed. Reconnecting..."
+
+        csv_out "SSH_CLOSED" \
+          "" "" "" "" "" "" "" "" "" "" \
+          $last_ap $last_mac $last_rssi $last_ch $last_rate $last_radio \
+          ""
+
+        break
+      }
+    }
+  }
+
+  safe_close
+  sleep $reconnect_delay
+}

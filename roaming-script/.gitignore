@@ -1,0 +1,8 @@
+# Runtime output
+logs/
+*.log
+*.csv
+
+# Local scratch files
+work/
+outputs/
