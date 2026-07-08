@@ -34,6 +34,7 @@
 #   --verbose-roam             Print compact FROM -> TO roam lines in terminal
 #   --warn-same-channel        Print warning if roaming to another AP on same channel
 #   --debug                    Show raw SSH/CLI output for troubleshooting login/enable
+#   --version                  Print version and exit
 #   --help                     Show help
 #
 # Default logging:
@@ -73,7 +74,13 @@ proc usage {} {
   puts "  --verbose-roam             Print compact FROM -> TO roam lines"
   puts "  --warn-same-channel        Warn if WGB roams between APs on same channel"
   puts "  --debug                    Show raw SSH/CLI output for troubleshooting"
+  puts "  --version                  Print version and exit"
   puts "  --help                     Show this help"
+}
+
+if {$argc == 1 && [lindex $argv 0] eq "--version"} {
+  puts "wgbdiag v$VERSION"
+  exit 0
 }
 
 if {$argc < 4} {
@@ -146,6 +153,10 @@ while {$i < $argc} {
     "--debug" {
       set debug 1
       log_user 1
+    }
+    "--version" {
+      puts "wgbdiag v$VERSION"
+      exit 0
     }
     "--help" {
       usage

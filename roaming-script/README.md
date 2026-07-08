@@ -57,6 +57,12 @@ Show raw SSH/CLI output while troubleshooting login or enable handling:
 ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --debug
 ```
 
+Print the script version only:
+
+```sh
+./wgbdiag.exp --version
+```
+
 ## Options
 
 | Option | Description | Default |
@@ -73,6 +79,7 @@ Show raw SSH/CLI output while troubleshooting login or enable handling:
 | `--verbose-roam` | Print compact `FROM -> TO` roam lines in the terminal when roam notifications are enabled. | Off |
 | `--warn-same-channel` | Print a terminal warning if the WGB roams between APs on the same channel. | Off |
 | `--debug` | Show raw SSH/CLI output for troubleshooting login and enable behavior. | Off |
+| `--version` | Print `wgbdiag v1.1.1` and exit with status code 0. | n/a |
 | `--help` | Show built-in help. | n/a |
 
 ## Default Logging
