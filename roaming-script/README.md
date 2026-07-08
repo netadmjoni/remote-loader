@@ -33,6 +33,12 @@ Use a one-second poll interval and reconnect after 60 seconds on failure:
 ./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --interval 1 --reconnect 60
 ```
 
+Use a 500 millisecond poll interval:
+
+```sh
+./wgbdiag.exp 10.194.240.11 admin "LOGIN" "ENABLE" --interval-ms 500
+```
+
 Write default daily logs under a custom folder:
 
 ```sh
@@ -68,6 +74,7 @@ Print the script version only:
 | Option | Description | Default |
 | --- | --- | --- |
 | `--interval <seconds>` | Poll interval for `show wgb dot11 associations`. | `1` |
+| `--interval-ms <ms>` | Poll interval in milliseconds. This is an alternative to `--interval`. | Off |
 | `--reconnect <seconds>` | Delay before retrying after connection, login, enable, timeout, or closed-session failures. | `60` |
 | `--log-dir <folder>` | Folder used for automatic daily log and CSV files. | `./logs` |
 | `--log <file>` | Specific human-readable log file path. | Daily file in `--log-dir` |
