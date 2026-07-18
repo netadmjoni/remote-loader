@@ -12,7 +12,7 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
         WriteIndented = true
     };
 
-    public string SettingsPath { get; } = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+    public string SettingsPath { get; } = AppDataPaths.SettingsPath;
 
     public SettingsLoadResult Load()
     {
@@ -20,7 +20,7 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
         {
             return new SettingsLoadResult(
                 WgbDiagnosticsOptions.CreateDefault(),
-                [new ConfigurationValidationError("Settings file", $"Settings file was not found at {SettingsPath}. Defaults are loaded.")]);
+                []);
         }
 
         try
@@ -41,6 +41,7 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
 
     public void Save(WgbDiagnosticsOptions options)
     {
+        AppDataPaths.EnsureRootDirectory();
         var document = new SettingsDocument { WgbDiagnostics = options };
         var json = JsonSerializer.Serialize(document, SerializerOptions);
         File.WriteAllText(SettingsPath, json);
@@ -50,7 +51,7 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
     {
         return Path.IsPathFullyQualified(logDirectory)
             ? logDirectory
-            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, logDirectory));
+            : Path.GetFullPath(Path.Combine(AppDataPaths.RootDirectory, logDirectory));
     }
 
     private sealed class SettingsDocument

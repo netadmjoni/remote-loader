@@ -21,8 +21,7 @@ public partial class App : Application
         _host = Host.CreateDefaultBuilder(e.Args)
             .ConfigureAppConfiguration((_, configuration) =>
             {
-                configuration.SetBasePath(AppContext.BaseDirectory);
-                configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                configuration.AddJsonFile(AppDataPaths.SettingsPath, optional: true, reloadOnChange: true);
             })
             .ConfigureServices((context, services) =>
             {

@@ -1,0 +1,15 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">0.1.0</ProductVersion>
+    <OutputName>WgbDiagnostics-$(ProductVersion)-win-x64</OutputName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <DefineConstants>$(DefineConstants);ProductVersion=$(ProductVersion)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Product.wxs" />
+    <Compile Include="$(HarvestedWxs)" Condition="'$(HarvestedWxs)' != '' and Exists('$(HarvestedWxs)')" />
+  </ItemGroup>
+</Project>

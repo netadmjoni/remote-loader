@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="WGB Diagnostics"
+           Manufacturer="IITN"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="{8F80E3B1-7AC5-4DB9-9609-3B548DFD0F07}"
+           Scope="perMachine"
+           Language="1033"
+           InstallerVersion="500">
+    <SummaryInformation Manufacturer="IITN" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of WGB Diagnostics is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="INSTALLDESKTOPSHORTCUT" Value="1" />
+
+    <Feature Id="ProductFeature" Title="WGB Diagnostics" Level="1">
+      <ComponentGroupRef Id="PublishedFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="WgbDiagnostics" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="WGB Diagnostics" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+  </Fragment>
+
+  <Fragment>
+    <Component Id="StartMenuShortcutComponent" Directory="ApplicationProgramsFolder" Guid="{2F83F0B9-3A07-4D4D-A0AE-6B9897E7F79B}">
+      <Shortcut Id="StartMenuShortcut"
+                Name="WGB Diagnostics"
+                Description="WGB Diagnostics"
+                Target="[INSTALLFOLDER]WgbDiagnostics.App.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\IITN\WgbDiagnostics"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcutComponent"
+               Directory="DesktopFolder"
+               Guid="{8E7F25FD-68C8-4C9D-A444-229862350A9E}"
+               Condition="INSTALLDESKTOPSHORTCUT = &quot;1&quot;">
+      <Shortcut Id="DesktopShortcut"
+                Name="WGB Diagnostics"
+                Description="WGB Diagnostics"
+                Target="[INSTALLFOLDER]WgbDiagnostics.App.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\IITN\WgbDiagnostics"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>
