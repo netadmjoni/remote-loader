@@ -10,11 +10,15 @@ public sealed record WgbPollingOptions(
     string Command,
     string ParserProfile,
     int PollIntervalSeconds,
-    int CommandTimeoutMilliseconds)
+    int CommandTimeoutMilliseconds,
+    bool UseEnableMode = false,
+    string EnableCommand = "enable",
+    string EnablePassword = "")
 {
     public static WgbPollingOptions FromDiagnosticsOptions(
         WgbDiagnosticsOptions options,
         string password,
+        string enablePassword,
         int? commandTimeoutMilliseconds = null)
     {
         return new WgbPollingOptions(
@@ -25,7 +29,10 @@ public sealed record WgbPollingOptions(
             options.WgbCommand,
             options.ParserProfile,
             options.WgbPollIntervalSeconds,
-            commandTimeoutMilliseconds ?? Math.Max(5000, options.WgbPollIntervalSeconds * 1000));
+            commandTimeoutMilliseconds ?? Math.Max(5000, options.WgbPollIntervalSeconds * 1000),
+            options.UseEnableMode,
+            options.EnableCommand,
+            enablePassword);
     }
 
     public WgbCommandRequest ToCommandRequest()
@@ -36,6 +43,9 @@ public sealed record WgbPollingOptions(
             Username,
             Password,
             Command,
-            CommandTimeoutMilliseconds);
+            CommandTimeoutMilliseconds,
+            UseEnableMode,
+            EnableCommand,
+            EnablePassword);
     }
 }

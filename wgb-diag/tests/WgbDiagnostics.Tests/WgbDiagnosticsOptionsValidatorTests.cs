@@ -22,9 +22,25 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
 
         Assert.Equal(1, options.WgbPollIntervalSeconds);
         Assert.Equal("show wgb dot11 associations", options.WgbCommand);
+        Assert.False(options.UseEnableMode);
+        Assert.Equal("enable", options.EnableCommand);
         Assert.Equal(100, options.PingIntervalMilliseconds);
         Assert.Equal(1000, options.PingTimeoutMilliseconds);
         Assert.Equal(600, options.LossThresholdMilliseconds);
+    }
+
+    [Fact]
+    public void EnableCommandIsRequiredOnlyWhenEnableModeIsEnabled()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.EnableCommand = "";
+
+        Assert.Empty(_validator.Validate(options));
+
+        options.UseEnableMode = true;
+
+        var error = Assert.Single(_validator.Validate(options));
+        Assert.Equal("Enable command", error.Field);
     }
 
     [Fact]

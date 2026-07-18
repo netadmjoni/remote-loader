@@ -3,7 +3,7 @@ param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
     [string]$Framework = "net8.0-windows10.0.19041",
-    [string]$Version = "0.1.0"
+    [string]$Version = "0.1.2"
 )
 
 Set-StrictMode -Version Latest

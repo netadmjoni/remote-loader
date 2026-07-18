@@ -2,345 +2,522 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sp="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
-        Width="960"
-        Height="900"
-        MinWidth="640"
-        MinHeight="720">
+        Width="1180"
+        Height="760"
+        MinWidth="1040"
+        MinHeight="700">
   <Window.Resources>
     <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
       <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="Margin" Value="0,0,16,8" />
+      <Setter Property="Margin" Value="0,0,14,8" />
       <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="MetricLabelStyle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#5F6873" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style x:Key="MetricValueStyle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="21" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+    <Style x:Key="MetricCardStyle" TargetType="Border">
+      <Setter Property="BorderBrush" Value="#D8DEE6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="10" />
+      <Setter Property="Margin" Value="0,0,8,8" />
+      <Setter Property="Background" Value="#FAFBFC" />
     </Style>
     <Style TargetType="TextBox">
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="Margin" Value="0,0,0,8" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="MaxWidth" Value="520" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
     <Style TargetType="PasswordBox">
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="Margin" Value="0,0,0,8" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="MaxWidth" Value="520" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
     <Style TargetType="Button">
-      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="MinHeight" Value="30" />
       <Setter Property="MinWidth" Value="112" />
-      <Setter Property="Margin" Value="0,0,8,0" />
+      <Setter Property="Margin" Value="0,0,8,8" />
       <Setter Property="Padding" Value="12,4" />
     </Style>
   </Window.Resources>
 
-  <Grid Margin="16">
+  <Grid Margin="12">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
-      <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <TextBlock Grid.Row="0"
-               Text="Settings"
-               FontSize="22"
-               FontWeight="SemiBold"
-               Margin="0,0,0,12" />
-
-    <GroupBox Grid.Row="1" Header="ICMP monitor" Margin="0,0,0,12">
-      <Grid Margin="8">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <WrapPanel Grid.Row="0" VerticalAlignment="Center">
-          <Button x:Name="StartMonitoringButton" Content="Start monitoring" Click="StartMonitoringButton_Click" />
-          <Button x:Name="StopMonitoringButton" Content="Stop monitoring" Click="StopMonitoringButton_Click" IsEnabled="False" />
-
-          <TextBlock Text="Status:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="MonitorStatusTextBlock" Text="Stopped" VerticalAlignment="Center" MinWidth="80" />
-
-          <TextBlock Text="RTT:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="CurrentRttTextBlock" Text="-" VerticalAlignment="Center" MinWidth="72" />
-
-          <TextBlock Text="OK:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="TotalOkTextBlock" Text="0" VerticalAlignment="Center" MinWidth="48" />
-
-          <TextBlock Text="Lost:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="TotalLostTextBlock" Text="0" VerticalAlignment="Center" MinWidth="48" />
-
-          <TextBlock Text="Consecutive loss:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="ConsecutiveLossTextBlock" Text="0" VerticalAlignment="Center" MinWidth="48" />
-
-          <TextBlock Text="Longest outage:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="LongestOutageTextBlock" Text="0 ms" VerticalAlignment="Center" MinWidth="72" />
-
-          <TextBlock Text="Runtime:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="RuntimeTextBlock" Text="00:00:00" VerticalAlignment="Center" MinWidth="80" />
-        </WrapPanel>
-
-        <ListBox Grid.Row="1"
-                 x:Name="ProbeEventsListBox"
-                 Height="120"
-                 Margin="0,8,0,0" />
-      </Grid>
-    </GroupBox>
-
-    <GroupBox Grid.Row="2" Header="WGB status" Margin="0,0,0,12">
-      <Grid Margin="8">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <WrapPanel Grid.Row="0" VerticalAlignment="Center">
-          <Button x:Name="TestSshButton" Content="Test SSH" Click="TestSshButton_Click" />
-          <Button x:Name="StartWgbPollingButton" Content="Start WGB polling" Click="StartWgbPollingButton_Click" />
-          <Button x:Name="StopWgbPollingButton" Content="Stop WGB polling" Click="StopWgbPollingButton_Click" IsEnabled="False" />
-
-          <TextBlock Text="SSH/WGB status:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="WgbStatusTextBlock" Text="Not tested" VerticalAlignment="Center" MinWidth="180" />
-        </WrapPanel>
-
-        <Grid Grid.Row="1" Margin="0,8,0,0">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
+    <TabControl x:Name="MainTabControl" Grid.Row="0">
+      <TabItem Header="Dashboard">
+        <Grid Margin="10">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+
+          <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,8">
+            <WrapPanel DockPanel.Dock="Left">
+              <Button x:Name="StartMonitoringButton" Content="Start monitoring" Click="StartMonitoringButton_Click" />
+              <Button x:Name="StopMonitoringButton" Content="Stop monitoring" Click="StopMonitoringButton_Click" IsEnabled="False" />
+              <Button x:Name="StartWgbPollingButton" Content="Start WGB polling" Click="StartWgbPollingButton_Click" />
+              <Button x:Name="StopWgbPollingButton" Content="Stop WGB polling" Click="StopWgbPollingButton_Click" IsEnabled="False" />
+              <Button x:Name="OpenCurrentSessionButton" Content="Open current session" Click="OpenCurrentSessionButton_Click" IsEnabled="False" />
+              <Button x:Name="OpenLogFolderButton" Content="Open log folder" Click="OpenLogFolderButton_Click" />
+            </WrapPanel>
+            <TextBlock TextAlignment="Right" TextWrapping="Wrap" VerticalAlignment="Center">
+              <Run Text="Current session: " />
+              <Run x:Name="CurrentSessionTextBlock" Text="-" />
+            </TextBlock>
+          </DockPanel>
+
+          <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="2.1*" />
+              <ColumnDefinition Width="3*" />
+              <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource MetricCardStyle}" Background="#F8FAFC">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           x:Name="DashboardStatusSymbolTextBlock"
+                           Text="OK"
+                           FontSize="28"
+                           FontWeight="Bold"
+                           MinWidth="58"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextAlignment="Center" />
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                  <TextBlock Text="Communication status" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="DashboardStatusTextBlock"
+                             Text="OK"
+                             FontSize="34"
+                             FontWeight="Bold"
+                             TextWrapping="Wrap" />
+                  <TextBlock x:Name="DashboardInterruptionTextBlock"
+                             Text="No active interruption"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap" />
+                  <TextBlock x:Name="DashboardRoamCorrelationTextBlock"
+                             Text="Roam: -"
+                             TextWrapping="Wrap" />
+                  <TextBlock x:Name="DashboardPreRoamRssiTextBlock"
+                             Text="RSSI before roam: -"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <UniformGrid Grid.Column="1" Columns="4">
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="ICMP" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="MonitorStatusTextBlock" Text="Stopped" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="Current RTT" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="CurrentRttTextBlock" Text="-" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="OK probes" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="TotalOkTextBlock" Text="0" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="Ongoing loss" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="ConsecutiveLossTextBlock" Text="0" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="Lost probes" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="TotalLostTextBlock" Text="0" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="Longest outage" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="LongestOutageTextBlock" Text="0 ms" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="Runtime" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="RuntimeTextBlock" Text="00:00:00" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource MetricCardStyle}">
+                <StackPanel>
+                  <TextBlock Text="WGB" Style="{StaticResource MetricLabelStyle}" />
+                  <TextBlock x:Name="DashboardWgbStatusTextBlock" Text="Not tested" Style="{StaticResource MetricValueStyle}" />
+                </StackPanel>
+              </Border>
+            </UniformGrid>
+
+            <Border Grid.Column="2" Style="{StaticResource MetricCardStyle}">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="WGB radio" Style="{StaticResource SectionTitleStyle}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Parent AP:" FontWeight="SemiBold" Margin="0,0,8,5" />
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ParentApTextBlock" Text="-" TextTrimming="CharacterEllipsis" Margin="0,0,0,5" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="RSSI:" FontWeight="SemiBold" Margin="0,0,8,5" />
+                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="RssiTextBlock" Text="-" Margin="0,0,0,5" />
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Channel:" FontWeight="SemiBold" Margin="0,0,8,5" />
+                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="ChannelTextBlock" Text="-" Margin="0,0,0,5" />
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Radio ID:" FontWeight="SemiBold" Margin="0,0,8,0" />
+                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="RadioIdTextBlock" Text="-" />
+              </Grid>
+            </Border>
+          </Grid>
+
+          <Grid Grid.Row="2">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,6">
+              <WrapPanel DockPanel.Dock="Left">
+                <Button x:Name="ClearGraphButton" Content="Clear graph" Click="ClearGraphButton_Click" />
+                <Button x:Name="PauseGraphButton" Content="Pause graph" Click="PauseGraphButton_Click" />
+                <Button x:Name="ResetZoomButton" Content="Reset zoom" Click="ResetZoomButton_Click" />
+              </WrapPanel>
+              <WrapPanel HorizontalAlignment="Right">
+                <TextBlock Text="Graph:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
+                <TextBlock x:Name="GraphStatusTextBlock" Text="Autoscroll" VerticalAlignment="Center" MinWidth="110" Margin="0,0,0,8" />
+                <TextBlock Text="Parent AP:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
+                <TextBlock x:Name="GraphParentApTextBlock" Text="-" VerticalAlignment="Center" MinWidth="120" Margin="0,0,0,8" />
+                <TextBlock Text="RSSI:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
+                <TextBlock x:Name="GraphRssiTextBlock" Text="-" VerticalAlignment="Center" MinWidth="56" Margin="0,0,0,8" />
+                <TextBlock Text="Channel:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
+                <TextBlock x:Name="GraphChannelTextBlock" Text="-" VerticalAlignment="Center" MinWidth="48" Margin="0,0,0,8" />
+                <TextBlock Text="Radio ID:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
+                <TextBlock x:Name="GraphRadioIdTextBlock" Text="-" VerticalAlignment="Center" MinWidth="48" Margin="0,0,0,8" />
+              </WrapPanel>
+            </DockPanel>
+
+            <sp:WpfPlot Grid.Row="1"
+                        x:Name="RttPlot"
+                        MinHeight="150"
+                        Margin="0,0,0,8" />
+
+            <sp:WpfPlot Grid.Row="2"
+                        x:Name="RssiPlot"
+                        MinHeight="130" />
+
+            <TextBlock Grid.Row="3"
+                       x:Name="DashboardGraphStatusTextBlock"
+                       Text="Markers: -"
+                       Margin="0,6,0,0"
+                       TextWrapping="Wrap" />
+          </Grid>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="Events / Diagnostics">
+        <Grid Margin="10">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+
+          <WrapPanel Grid.Row="0" Margin="0,0,0,8">
+            <Button x:Name="TestSshButton" Content="Test SSH" Click="TestSshButton_Click" />
+            <TextBlock Text="SSH/WGB status:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
+            <TextBlock x:Name="WgbStatusTextBlock" Text="Not tested" VerticalAlignment="Center" MinWidth="260" Margin="0,0,0,8" />
+          </WrapPanel>
+
+          <TabControl Grid.Row="1">
+            <TabItem Header="ICMP">
+              <Grid Margin="8">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="ICMP events" Style="{StaticResource SectionTitleStyle}" />
+                <ListBox Grid.Row="1" x:Name="ProbeEventsListBox" />
+              </Grid>
+            </TabItem>
+
+            <TabItem Header="WGB">
+              <Grid Margin="8">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Tx rate:" FontWeight="SemiBold" Margin="0,0,4,5" />
+                  <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TxRateTextBlock" Text="-" Margin="0,0,16,5" />
+                  <TextBlock Grid.Row="0" Grid.Column="2" Text="Rx rate:" FontWeight="SemiBold" Margin="0,0,4,5" />
+                  <TextBlock Grid.Row="0" Grid.Column="3" x:Name="RxRateTextBlock" Text="-" Margin="0,0,16,5" />
+                  <TextBlock Grid.Row="0" Grid.Column="4" Text="WGB IP:" FontWeight="SemiBold" Margin="0,0,4,5" />
+                  <TextBlock Grid.Row="0" Grid.Column="5" x:Name="WgbIpTextBlock" Text="-" Margin="0,0,16,5" />
+                  <TextBlock Grid.Row="0" Grid.Column="6" Text="Association:" FontWeight="SemiBold" Margin="0,0,4,5" />
+                  <TextBlock Grid.Row="0" Grid.Column="7" x:Name="AssociationStatusTextBlock" Text="Unknown" Margin="0,0,0,5" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Parent BSSID:" FontWeight="SemiBold" Margin="0,0,4,0" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ParentBssidTextBlock" Text="-" Margin="0,0,16,0" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" Text="Candidate AP:" FontWeight="SemiBold" Margin="0,0,4,0" />
+                  <TextBlock Grid.Row="1" Grid.Column="3" x:Name="CandidateApTextBlock" Text="-" Margin="0,0,16,0" />
+                  <TextBlock Grid.Row="1" Grid.Column="4" Text="Candidate BSSID:" FontWeight="SemiBold" Margin="0,0,4,0" />
+                  <TextBlock Grid.Row="1" Grid.Column="5" x:Name="CandidateBssidTextBlock" Text="-" Margin="0,0,16,0" />
+                </Grid>
+                <TextBlock Grid.Row="1" Text="WGB events" Style="{StaticResource SectionTitleStyle}" />
+                <ListBox Grid.Row="2" x:Name="WgbEventsListBox" />
+              </Grid>
+            </TabItem>
+
+            <TabItem Header="Roam">
+              <Grid Margin="8">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Roaming timeline" Style="{StaticResource SectionTitleStyle}" />
+                <ListBox Grid.Row="1" x:Name="RoamTimelineListBox" />
+                <TextBlock Grid.Row="2"
+                           x:Name="GraphMarkerTextBlock"
+                           Margin="0,8,0,0"
+                           TextWrapping="Wrap"
+                           Text="Markers: -" />
+              </Grid>
+            </TabItem>
+
+            <TabItem Header="Raw / Parser">
+              <Grid Margin="8">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="2*" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <WrapPanel Grid.Row="0" Margin="0,0,0,8">
+                  <Button x:Name="LoadSampleOutputButton" Content="Load sample output" Click="LoadSampleOutputButton_Click" />
+                  <Button x:Name="ParseSampleOutputButton" Content="Parse sample output" Click="ParseSampleOutputButton_Click" />
+                </WrapPanel>
+
+                <TextBox Grid.Row="1"
+                         x:Name="RawWgbOutputTextBox"
+                         AcceptsReturn="True"
+                         TextWrapping="NoWrap"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Auto"
+                         MaxWidth="9999" />
+
+                <Grid Grid.Row="2" Margin="0,8,0,4">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="Matched fields" FontWeight="SemiBold" Margin="0,0,8,0" />
+                  <TextBlock Grid.Column="1" Text="Missing fields" FontWeight="SemiBold" Margin="0,0,8,0" />
+                  <TextBlock Grid.Column="2" Text="Unclassified lines" FontWeight="SemiBold" />
+                </Grid>
+
+                <Grid Grid.Row="3">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox Grid.Column="0" x:Name="MatchedFieldsTextBox" IsReadOnly="True" AcceptsReturn="True" Margin="0,0,8,0" VerticalScrollBarVisibility="Auto" MaxWidth="9999" />
+                  <TextBox Grid.Column="1" x:Name="MissingFieldsTextBox" IsReadOnly="True" AcceptsReturn="True" Margin="0,0,8,0" VerticalScrollBarVisibility="Auto" MaxWidth="9999" />
+                  <TextBox Grid.Column="2" x:Name="UnclassifiedLinesTextBox" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MaxWidth="9999" />
+                </Grid>
+              </Grid>
+            </TabItem>
+          </TabControl>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="Settings">
+        <Grid Margin="10">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
 
-          <TextBlock Grid.Row="0" Grid.Column="0" Text="Parent AP:" FontWeight="SemiBold" Margin="0,0,4,6" />
-          <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ParentApTextBlock" Text="-" Margin="0,0,16,6" />
-
-          <TextBlock Grid.Row="0" Grid.Column="2" Text="RSSI:" FontWeight="SemiBold" Margin="0,0,4,6" />
-          <TextBlock Grid.Row="0" Grid.Column="3" x:Name="RssiTextBlock" Text="-" Margin="0,0,16,6" />
-
-          <TextBlock Grid.Row="0" Grid.Column="4" Text="Channel:" FontWeight="SemiBold" Margin="0,0,4,6" />
-          <TextBlock Grid.Row="0" Grid.Column="5" x:Name="ChannelTextBlock" Text="-" Margin="0,0,16,6" />
-
-          <TextBlock Grid.Row="0" Grid.Column="6" Text="Radio ID:" FontWeight="SemiBold" Margin="0,0,4,6" />
-          <TextBlock Grid.Row="0" Grid.Column="7" x:Name="RadioIdTextBlock" Text="-" Margin="0,0,0,6" />
-
-          <TextBlock Grid.Row="1" Grid.Column="0" Text="Tx rate:" FontWeight="SemiBold" Margin="0,0,4,0" />
-          <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TxRateTextBlock" Text="-" Margin="0,0,16,0" />
-
-          <TextBlock Grid.Row="1" Grid.Column="2" Text="Rx rate:" FontWeight="SemiBold" Margin="0,0,4,0" />
-          <TextBlock Grid.Row="1" Grid.Column="3" x:Name="RxRateTextBlock" Text="-" Margin="0,0,16,0" />
-
-          <TextBlock Grid.Row="1" Grid.Column="4" Text="WGB IP:" FontWeight="SemiBold" Margin="0,0,4,0" />
-          <TextBlock Grid.Row="1" Grid.Column="5" x:Name="WgbIpTextBlock" Text="-" Margin="0,0,16,0" />
-
-          <TextBlock Grid.Row="1" Grid.Column="6" Text="Association:" FontWeight="SemiBold" Margin="0,0,4,0" />
-          <TextBlock Grid.Row="1" Grid.Column="7" x:Name="AssociationStatusTextBlock" Text="Unknown" />
-
-          <TextBlock Grid.Row="2" Grid.Column="0" Text="Parent BSSID:" FontWeight="SemiBold" Margin="0,6,4,0" />
-          <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ParentBssidTextBlock" Text="-" Margin="0,6,16,0" />
-
-          <TextBlock Grid.Row="2" Grid.Column="2" Text="Candidate AP:" FontWeight="SemiBold" Margin="0,6,4,0" />
-          <TextBlock Grid.Row="2" Grid.Column="3" x:Name="CandidateApTextBlock" Text="-" Margin="0,6,16,0" />
-
-          <TextBlock Grid.Row="2" Grid.Column="4" Text="Candidate BSSID:" FontWeight="SemiBold" Margin="0,6,4,0" />
-          <TextBlock Grid.Row="2" Grid.Column="5" x:Name="CandidateBssidTextBlock" Text="-" Margin="0,6,16,0" />
-        </Grid>
-
-        <Expander Grid.Row="2" Header="Advanced raw WGB output" Margin="0,8,0,0">
-          <StackPanel>
-            <WrapPanel Margin="0,0,0,8">
-              <Button x:Name="LoadSampleOutputButton" Content="Load sample output" Click="LoadSampleOutputButton_Click" />
-              <Button x:Name="ParseSampleOutputButton" Content="Parse sample output" Click="ParseSampleOutputButton_Click" />
-            </WrapPanel>
-
-            <TextBox x:Name="RawWgbOutputTextBox"
-                     Height="120"
-                     AcceptsReturn="True"
-                     TextWrapping="NoWrap"
-                     VerticalScrollBarVisibility="Auto"
-                     HorizontalScrollBarVisibility="Auto" />
-
-            <Grid Margin="0,8,0,0">
+          <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <Grid MaxWidth="780" HorizontalAlignment="Left">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="520" />
               </Grid.ColumnDefinitions>
               <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
               </Grid.RowDefinitions>
 
-              <TextBlock Grid.Row="0" Grid.Column="0" Text="Matched fields" FontWeight="SemiBold" Margin="0,0,8,4" />
-              <TextBlock Grid.Row="0" Grid.Column="1" Text="Missing fields" FontWeight="SemiBold" Margin="0,0,8,4" />
-              <TextBlock Grid.Row="0" Grid.Column="2" Text="Unclassified lines" FontWeight="SemiBold" Margin="0,0,0,4" />
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Application name" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="0" Grid.Column="1" x:Name="ApplicationNameTextBox" />
 
-              <TextBox Grid.Row="1" Grid.Column="0" x:Name="MatchedFieldsTextBox" Height="80" IsReadOnly="True" AcceptsReturn="True" Margin="0,0,8,0" VerticalScrollBarVisibility="Auto" />
-              <TextBox Grid.Row="1" Grid.Column="1" x:Name="MissingFieldsTextBox" Height="80" IsReadOnly="True" AcceptsReturn="True" Margin="0,0,8,0" VerticalScrollBarVisibility="Auto" />
-              <TextBox Grid.Row="1" Grid.Column="2" x:Name="UnclassifiedLinesTextBox" Height="80" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="WGB address" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="1" Grid.Column="1" x:Name="WgbAddressTextBox" />
+
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="SSH port" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="2" Grid.Column="1" x:Name="SshPortTextBox" />
+
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="SSH username" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="3" Grid.Column="1" x:Name="SshUsernameTextBox" />
+
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="SSH password" Style="{StaticResource FieldLabelStyle}" />
+              <PasswordBox Grid.Row="4" Grid.Column="1" x:Name="SshPasswordBox" />
+
+              <TextBlock Grid.Row="5" Grid.Column="0" Text="Use enable mode" Style="{StaticResource FieldLabelStyle}" />
+              <CheckBox Grid.Row="5" Grid.Column="1" x:Name="UseEnableModeCheckBox" Margin="0,0,0,8" />
+
+              <TextBlock Grid.Row="6" Grid.Column="0" Text="Enable command" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="6" Grid.Column="1" x:Name="EnableCommandTextBox" />
+
+              <TextBlock Grid.Row="7" Grid.Column="0" Text="Enable password" Style="{StaticResource FieldLabelStyle}" />
+              <PasswordBox Grid.Row="7" Grid.Column="1" x:Name="EnablePasswordBox" />
+
+              <TextBlock Grid.Row="8" Grid.Column="0" Text="WGB poll interval seconds" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="8" Grid.Column="1" x:Name="WgbPollIntervalSecondsTextBox" />
+
+              <TextBlock Grid.Row="9" Grid.Column="0" Text="WGB command" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="9" Grid.Column="1" x:Name="WgbCommandTextBox" />
+
+              <TextBlock Grid.Row="10" Grid.Column="0" Text="Parser profile" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="10" Grid.Column="1" x:Name="ParserProfileTextBox" />
+
+              <TextBlock Grid.Row="11" Grid.Column="0" Text="Ping target" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="11" Grid.Column="1" x:Name="PingTargetTextBox" />
+
+              <TextBlock Grid.Row="12" Grid.Column="0" Text="Ping interval milliseconds" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="12" Grid.Column="1" x:Name="PingIntervalMillisecondsTextBox" />
+
+              <TextBlock Grid.Row="13" Grid.Column="0" Text="Ping timeout milliseconds" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="13" Grid.Column="1" x:Name="PingTimeoutMillisecondsTextBox" />
+
+              <TextBlock Grid.Row="14" Grid.Column="0" Text="Loss threshold milliseconds" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="14" Grid.Column="1" x:Name="LossThresholdMillisecondsTextBox" />
+
+              <TextBlock Grid.Row="15" Grid.Column="0" Text="Raw logging" Style="{StaticResource FieldLabelStyle}" />
+              <CheckBox Grid.Row="15" Grid.Column="1" x:Name="RawLoggingEnabledCheckBox" Margin="0,0,0,8" />
+
+              <TextBlock Grid.Row="16" Grid.Column="0" Text="Log directory" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="16" Grid.Column="1" x:Name="LogDirectoryTextBox" />
+
+              <TextBlock Grid.Row="17" Grid.Column="0" Text="Daily rotation" Style="{StaticResource FieldLabelStyle}" />
+              <CheckBox Grid.Row="17" Grid.Column="1" x:Name="DailyRotationEnabledCheckBox" Margin="0,0,0,8" />
+
+              <TextBlock Grid.Row="18" Grid.Column="0" Text="Retention days" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="18" Grid.Column="1" x:Name="RetentionDaysTextBox" />
+
+              <TextBlock Grid.Row="19" Grid.Column="0" Text="Graph visible minutes" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="19" Grid.Column="1" x:Name="GraphVisibleMinutesTextBox" />
+
+              <TextBlock Grid.Row="20" Grid.Column="0" Text="WGB log collection enabled" Style="{StaticResource FieldLabelStyle}" />
+              <CheckBox Grid.Row="20" Grid.Column="1" x:Name="WgbLogCollectionEnabledCheckBox" Margin="0,0,0,8" />
+
+              <TextBlock Grid.Row="21" Grid.Column="0" Text="TFTP timeout seconds" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="21" Grid.Column="1" x:Name="TftpTimeoutSecondsTextBox" />
+
+              <TextBlock Grid.Row="22" Grid.Column="0" Text="Maximum received file size bytes" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="22" Grid.Column="1" x:Name="MaximumReceivedFileSizeBytesTextBox" />
             </Grid>
-          </StackPanel>
-        </Expander>
-      </Grid>
-    </GroupBox>
+          </ScrollViewer>
 
-    <GroupBox Grid.Row="3" Header="Realtime graph" Margin="0,0,0,12">
-      <Grid Margin="8">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+          <ListBox Grid.Row="1"
+                   x:Name="ValidationErrorsListBox"
+                   MaxHeight="90"
+                   Margin="0,8,0,8"
+                   Visibility="Collapsed" />
 
-        <WrapPanel Grid.Row="0" Margin="0,0,0,8">
-          <Button x:Name="ClearGraphButton" Content="Clear graph" Click="ClearGraphButton_Click" />
-          <Button x:Name="PauseGraphButton" Content="Pause graph" Click="PauseGraphButton_Click" />
-          <Button x:Name="ResetZoomButton" Content="Reset zoom" Click="ResetZoomButton_Click" />
-          <TextBlock Text="Graph:" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold" />
-          <TextBlock x:Name="GraphStatusTextBlock" Text="Autoscroll" VerticalAlignment="Center" MinWidth="120" />
-        </WrapPanel>
-
-        <sp:WpfPlot Grid.Row="1"
-                    x:Name="RttPlot"
-                    Height="260"
-                    MinHeight="220" />
-
-        <TextBlock Grid.Row="2"
-                   x:Name="GraphMarkerTextBlock"
-                   Margin="0,6,0,0"
-                   TextWrapping="Wrap"
-                   Text="Markers: -" />
-      </Grid>
-    </GroupBox>
-
-    <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
-      <StackPanel>
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="240" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-          </Grid.RowDefinitions>
-
-          <TextBlock Grid.Row="0" Grid.Column="0" Text="Application name" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="0" Grid.Column="1" x:Name="ApplicationNameTextBox" />
-
-          <TextBlock Grid.Row="1" Grid.Column="0" Text="WGB address" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="1" Grid.Column="1" x:Name="WgbAddressTextBox" />
-
-          <TextBlock Grid.Row="2" Grid.Column="0" Text="SSH port" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="2" Grid.Column="1" x:Name="SshPortTextBox" />
-
-          <TextBlock Grid.Row="3" Grid.Column="0" Text="SSH username" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="3" Grid.Column="1" x:Name="SshUsernameTextBox" />
-
-          <TextBlock Grid.Row="4" Grid.Column="0" Text="SSH password" Style="{StaticResource FieldLabelStyle}" />
-          <PasswordBox Grid.Row="4" Grid.Column="1" x:Name="SshPasswordBox" />
-
-          <TextBlock Grid.Row="5" Grid.Column="0" Text="WGB poll interval seconds" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="5" Grid.Column="1" x:Name="WgbPollIntervalSecondsTextBox" />
-
-          <TextBlock Grid.Row="6" Grid.Column="0" Text="WGB command" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="6" Grid.Column="1" x:Name="WgbCommandTextBox" />
-
-          <TextBlock Grid.Row="7" Grid.Column="0" Text="Parser profile" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="7" Grid.Column="1" x:Name="ParserProfileTextBox" />
-
-          <TextBlock Grid.Row="8" Grid.Column="0" Text="Ping target" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="8" Grid.Column="1" x:Name="PingTargetTextBox" />
-
-          <TextBlock Grid.Row="9" Grid.Column="0" Text="Ping interval milliseconds" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="9" Grid.Column="1" x:Name="PingIntervalMillisecondsTextBox" />
-
-          <TextBlock Grid.Row="10" Grid.Column="0" Text="Ping timeout milliseconds" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="10" Grid.Column="1" x:Name="PingTimeoutMillisecondsTextBox" />
-
-          <TextBlock Grid.Row="11" Grid.Column="0" Text="Loss threshold milliseconds" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="11" Grid.Column="1" x:Name="LossThresholdMillisecondsTextBox" />
-
-          <TextBlock Grid.Row="12" Grid.Column="0" Text="Raw logging" Style="{StaticResource FieldLabelStyle}" />
-          <CheckBox Grid.Row="12" Grid.Column="1" x:Name="RawLoggingEnabledCheckBox" Margin="0,0,0,8" />
-
-          <TextBlock Grid.Row="13" Grid.Column="0" Text="Log directory" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="13" Grid.Column="1" x:Name="LogDirectoryTextBox" />
-
-          <TextBlock Grid.Row="14" Grid.Column="0" Text="Daily rotation" Style="{StaticResource FieldLabelStyle}" />
-          <CheckBox Grid.Row="14" Grid.Column="1" x:Name="DailyRotationEnabledCheckBox" Margin="0,0,0,8" />
-
-          <TextBlock Grid.Row="15" Grid.Column="0" Text="Retention days" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="15" Grid.Column="1" x:Name="RetentionDaysTextBox" />
-
-          <TextBlock Grid.Row="16" Grid.Column="0" Text="Graph visible minutes" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="16" Grid.Column="1" x:Name="GraphVisibleMinutesTextBox" />
-
-          <TextBlock Grid.Row="17" Grid.Column="0" Text="WGB log collection enabled" Style="{StaticResource FieldLabelStyle}" />
-          <CheckBox Grid.Row="17" Grid.Column="1" x:Name="WgbLogCollectionEnabledCheckBox" Margin="0,0,0,8" />
-
-          <TextBlock Grid.Row="18" Grid.Column="0" Text="TFTP timeout seconds" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="18" Grid.Column="1" x:Name="TftpTimeoutSecondsTextBox" />
-
-          <TextBlock Grid.Row="19" Grid.Column="0" Text="Maximum received file size bytes" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Grid.Row="19" Grid.Column="1" x:Name="MaximumReceivedFileSizeBytesTextBox" />
+          <WrapPanel Grid.Row="2">
+            <Button x:Name="SaveSettingsButton" Content="Save settings" Click="SaveSettingsButton_Click" />
+            <Button x:Name="ReloadSettingsButton" Content="Reload settings" Click="ReloadSettingsButton_Click" />
+            <Button x:Name="ResetToDefaultsButton" Content="Reset to defaults" Click="ResetToDefaultsButton_Click" />
+          </WrapPanel>
         </Grid>
-      </StackPanel>
-    </ScrollViewer>
+      </TabItem>
+    </TabControl>
 
-    <ListBox Grid.Row="5"
-             x:Name="ValidationErrorsListBox"
-             MaxHeight="110"
-             Margin="0,12,0,12"
-             Visibility="Collapsed" />
-
-    <DockPanel Grid.Row="6" LastChildFill="True">
-      <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-        <Button x:Name="SaveSettingsButton" Content="Save settings" Click="SaveSettingsButton_Click" />
-        <Button x:Name="ReloadSettingsButton" Content="Reload settings" Click="ReloadSettingsButton_Click" />
-        <Button x:Name="ResetToDefaultsButton" Content="Reset to defaults" Click="ResetToDefaultsButton_Click" />
-        <Button x:Name="OpenLogFolderButton" Content="Open log folder" Click="OpenLogFolderButton_Click" />
-        <Button x:Name="OpenCurrentSessionButton" Content="Open current session" Click="OpenCurrentSessionButton_Click" IsEnabled="False" />
-      </StackPanel>
-
-      <StackPanel VerticalAlignment="Center">
-        <TextBlock TextAlignment="Right" TextWrapping="Wrap">
-          <Run Text="Current session: " />
-          <Run x:Name="CurrentSessionTextBlock" Text="-" />
-        </TextBlock>
-        <TextBlock x:Name="StatusTextBlock"
-                   TextAlignment="Right"
-                   TextWrapping="Wrap" />
-      </StackPanel>
-    </DockPanel>
+    <TextBlock Grid.Row="1"
+               x:Name="StatusTextBlock"
+               TextAlignment="Right"
+               TextWrapping="Wrap"
+               Margin="0,8,0,0" />
   </Grid>
 </Window>

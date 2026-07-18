@@ -16,6 +16,7 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         AddRequiredTextError(errors, "WGB address", options.WgbAddress);
         AddPortError(errors, "SSH port", options.SshPort);
         AddRequiredTextError(errors, "SSH username", options.SshUsername);
+        AddEnableCommandError(errors, options.UseEnableMode, options.EnableCommand);
         AddPositiveIntegerError(errors, "WGB poll interval", options.WgbPollIntervalSeconds, "seconds");
         AddRequiredTextError(errors, "WGB command", options.WgbCommand);
         AddRequiredTextError(errors, "Parser profile", options.ParserProfile);
@@ -30,6 +31,23 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         AddPositiveLongError(errors, "Maximum received file size", options.MaximumReceivedFileSizeBytes, "bytes");
 
         return errors;
+    }
+
+    private static void AddEnableCommandError(
+        ICollection<ConfigurationValidationError> errors,
+        bool useEnableMode,
+        string? value)
+    {
+        if (useEnableMode)
+        {
+            AddRequiredTextError(errors, "Enable command", value);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(value) && value.Any(char.IsControl))
+        {
+            errors.Add(new ConfigurationValidationError("Enable command", "Enable command cannot contain control characters."));
+        }
     }
 
     private static void AddRequiredTextError(

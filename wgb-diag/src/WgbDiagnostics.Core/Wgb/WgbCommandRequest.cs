@@ -6,4 +6,7 @@ public sealed record WgbCommandRequest(
     string Username,
     string Password,
     string Command,
-    int TimeoutMilliseconds);
+    int TimeoutMilliseconds,
+    bool UseEnableMode = false,
+    string EnableCommand = "enable",
+    string EnablePassword = "");

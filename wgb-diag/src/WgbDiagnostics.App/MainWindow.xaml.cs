@@ -6,6 +6,8 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using ScottPlot;
+using ScottPlot.Interactivity;
+using ScottPlot.WPF;
 using WgbDiagnostics.App.Configuration;
 using WgbDiagnostics.Core.Configuration;
 using WgbDiagnostics.Core.Logging;
@@ -17,6 +19,9 @@ namespace WgbDiagnostics.App;
 
 public partial class MainWindow : Window
 {
+    private const int MaxDiagnosticItems = 500;
+    private const int MaxRenderedGraphMarkers = 80;
+
     private readonly ISettingsFileStore _settingsFileStore;
     private readonly IConfigurationValidator<WgbDiagnosticsOptions> _validator;
     private readonly IIcmpMonitor _icmpMonitor;
@@ -56,6 +61,8 @@ public partial class MainWindow : Window
 
         InitializeComponent();
         InitializeRttPlot();
+        InitializeRssiPlot();
+        ConfigureRealtimePlotInteractions();
         _graphRefreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(150)
@@ -389,6 +396,9 @@ public partial class MainWindow : Window
         SshPortTextBox.Text = options.SshPort.ToString(CultureInfo.InvariantCulture);
         SshUsernameTextBox.Text = options.SshUsername;
         SshPasswordBox.Password = "";
+        UseEnableModeCheckBox.IsChecked = options.UseEnableMode;
+        EnableCommandTextBox.Text = options.EnableCommand;
+        EnablePasswordBox.Password = "";
         WgbPollIntervalSecondsTextBox.Text = options.WgbPollIntervalSeconds.ToString(CultureInfo.InvariantCulture);
         WgbCommandTextBox.Text = options.WgbCommand;
         ParserProfileTextBox.Text = options.ParserProfile;
@@ -418,6 +428,9 @@ public partial class MainWindow : Window
             SshPort = ReadInt(SshPortTextBox, "SSH port", errors),
             SshUsername = SshUsernameTextBox.Text.Trim(),
             EncryptedPasswordPlaceholder = "",
+            UseEnableMode = UseEnableModeCheckBox.IsChecked == true,
+            EnableCommand = EnableCommandTextBox.Text.Trim(),
+            EncryptedEnablePasswordPlaceholder = "",
             WgbPollIntervalSeconds = ReadInt(WgbPollIntervalSecondsTextBox, "WGB poll interval", errors),
             WgbCommand = WgbCommandTextBox.Text.Trim(),
             ParserProfile = ParserProfileTextBox.Text.Trim(),
@@ -469,6 +482,7 @@ public partial class MainWindow : Window
         ValidationErrorsListBox.ItemsSource = errors.Select(error => $"{error.Field}: {error.Message}");
         ValidationErrorsListBox.Visibility = Visibility.Visible;
         StatusTextBlock.Text = $"{errors.Count} settings issue(s) found.";
+        MainTabControl.SelectedIndex = 2;
     }
 
     private void ShowStatus(string message)
@@ -490,7 +504,8 @@ public partial class MainWindow : Window
 
         return WgbPollingOptions.FromDiagnosticsOptions(
             diagnosticsOptions,
-            SshPasswordBox.Password);
+            SshPasswordBox.Password,
+            EnablePasswordBox.Password);
     }
 
     private ValueTask HandleMonitorEventAsync(IcmpMonitorEvent monitorEvent)
@@ -548,7 +563,7 @@ public partial class MainWindow : Window
         }
 
         ProbeEventsListBox.Items.Insert(0, FormatMonitorEvent(monitorEvent));
-        while (ProbeEventsListBox.Items.Count > 500)
+        while (ProbeEventsListBox.Items.Count > MaxDiagnosticItems)
         {
             ProbeEventsListBox.Items.RemoveAt(ProbeEventsListBox.Items.Count - 1);
         }
@@ -612,6 +627,7 @@ public partial class MainWindow : Window
             MonitorStatusTextBlock.Text = "Error";
             var message = task.Exception?.GetBaseException().Message ?? "Monitoring stopped unexpectedly.";
             ProbeEventsListBox.Items.Insert(0, $"Monitor error: {message}");
+            TrimItems(ProbeEventsListBox, MaxDiagnosticItems);
             _ = StopDiagnosticSessionIfIdleAsync();
             return;
         }
@@ -631,6 +647,9 @@ public partial class MainWindow : Window
 
     private void ApplyWgbPollEvent(WgbPollEvent pollEvent)
     {
+        WgbEventsListBox.Items.Insert(0, FormatWgbPollEvent(pollEvent));
+        TrimItems(WgbEventsListBox, MaxDiagnosticItems);
+
         switch (pollEvent.Kind)
         {
             case WgbPollEventKind.Connected:
@@ -812,7 +831,9 @@ public partial class MainWindow : Window
         return new[]
             {
                 SshPasswordBox.Password,
+                EnablePasswordBox.Password,
                 options.EncryptedPasswordPlaceholder,
+                options.EncryptedEnablePasswordPlaceholder,
                 options.SshUsername
             }
             .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -870,6 +891,35 @@ public partial class MainWindow : Window
         RttPlot.Refresh();
     }
 
+    private void InitializeRssiPlot()
+    {
+        var plot = RssiPlot.Plot;
+        plot.Clear();
+        plot.Title("Parent RSSI");
+        plot.XLabel("Local time");
+        plot.YLabel("RSSI (dBm)");
+        plot.Axes.DateTimeTicksBottom();
+        plot.Axes.SetLimitsY(-100, -30);
+        var now = DateTimeOffset.UtcNow;
+        plot.Axes.SetLimitsX(ToPlotX(now.AddMinutes(-60)), ToPlotX(now));
+        RssiPlot.Refresh();
+    }
+
+    private void ConfigureRealtimePlotInteractions()
+    {
+        ConfigureRealtimePlotInteraction(RttPlot);
+        ConfigureRealtimePlotInteraction(RssiPlot);
+    }
+
+    private static void ConfigureRealtimePlotInteraction(WpfPlot plot)
+    {
+        plot.UserInputProcessor.Disable();
+        UserInputProcessor.ResetState(plot);
+        plot.Menu?.Clear();
+        plot.ContextMenu = null;
+        plot.Focusable = false;
+    }
+
     private void GraphRefreshTimer_Tick(object? sender, EventArgs e)
     {
         _graphTimerTicks++;
@@ -888,9 +938,35 @@ public partial class MainWindow : Window
         }
 
         _graphNeedsRefresh = false;
-        var snapshot = _realtimeModel.Snapshot(DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = _realtimeModel.Snapshot(now);
         ApplyRealtimeSnapshotToStatus(snapshot);
 
+        double? minimumX = null;
+        double? maximumX = null;
+        if (!_graphAutoScrollPaused || resetZoom)
+        {
+            var left = now - snapshot.Options.VisibleWindow;
+            minimumX = ToPlotX(left);
+            maximumX = ToPlotX(now);
+        }
+
+        RenderRttPlot(snapshot, minimumX, maximumX);
+        RenderRssiPlot(snapshot, minimumX, maximumX);
+
+        var markerSummary = FormatMarkerSummary(snapshot.Markers);
+        GraphMarkerTextBlock.Text = markerSummary;
+        DashboardGraphStatusTextBlock.Text = markerSummary;
+        RoamTimelineListBox.ItemsSource = snapshot.RoamEvents
+            .Select(FormatRoamTimelineEvent)
+            .ToArray();
+    }
+
+    private void RenderRttPlot(
+        DiagnosticsRealtimeSnapshot snapshot,
+        double? minimumX,
+        double? maximumX)
+    {
         var plot = RttPlot.Plot;
         plot.Clear();
         plot.Title("ICMP RTT");
@@ -918,30 +994,86 @@ public partial class MainWindow : Window
             maxRtt = Math.Max(maxRtt, ys.Max());
         }
 
-        foreach (var marker in snapshot.Markers)
+        foreach (var marker in SelectRenderedMarkers(snapshot.Markers))
         {
-            var line = plot.Add.VerticalLine(
+            plot.Add.VerticalLine(
                 ToPlotX(marker.Timestamp),
-                1.25f,
+                1.0f,
                 GetMarkerColor(marker.Kind),
                 LinePattern.Dashed);
-            line.Text = FormatMarkerLabel(marker);
-            line.LabelRotation = 90;
-            line.LabelFontSize = 10;
-            line.LabelOppositeAxis = marker.Kind == RealtimeGraphMarkerKind.ParentApChanged;
         }
 
         plot.Axes.SetLimitsY(0, Math.Max(10, Math.Ceiling(maxRtt * 1.2)));
+        ApplyGraphXLimits(plot, minimumX, maximumX);
+        RttPlot.Refresh();
+    }
 
-        if (!_graphAutoScrollPaused || resetZoom)
+    private void RenderRssiPlot(
+        DiagnosticsRealtimeSnapshot snapshot,
+        double? minimumX,
+        double? maximumX)
+    {
+        var plot = RssiPlot.Plot;
+        plot.Clear();
+        plot.Title("Parent RSSI");
+        plot.XLabel("Local time");
+        plot.YLabel("RSSI (dBm)");
+        plot.Axes.DateTimeTicksBottom();
+
+        if (snapshot.RssiPoints.Count > 0)
         {
-            var right = DateTimeOffset.UtcNow;
-            var left = right - snapshot.Options.VisibleWindow;
-            plot.Axes.SetLimitsX(ToPlotX(left), ToPlotX(right));
+            var xs = snapshot.RssiPoints.Select(point => ToPlotX(point.Timestamp)).ToArray();
+            var ys = snapshot.RssiPoints.Select(point => point.Rssi).ToArray();
+            var scatter = plot.Add.Scatter(xs, ys, Colors.SeaGreen);
+            scatter.LegendText = "RSSI";
+            scatter.LineWidth = 1.5f;
+            scatter.MarkerSize = 3;
+            scatter.MarkerShape = MarkerShape.FilledCircle;
+
+            var minimumRssi = Math.Floor(ys.Min() - 5);
+            var maximumRssi = Math.Ceiling(ys.Max() + 5);
+            if (maximumRssi - minimumRssi < 10)
+            {
+                var middle = (maximumRssi + minimumRssi) / 2;
+                minimumRssi = middle - 5;
+                maximumRssi = middle + 5;
+            }
+
+            plot.Axes.SetLimitsY(minimumRssi, maximumRssi);
+        }
+        else
+        {
+            plot.Axes.SetLimitsY(-100, -30);
         }
 
-        GraphMarkerTextBlock.Text = FormatMarkerSummary(snapshot.Markers);
-        RttPlot.Refresh();
+        foreach (var marker in SelectRenderedMarkers(snapshot.Markers)
+                     .Where(marker => marker.Kind == RealtimeGraphMarkerKind.ParentApChanged))
+        {
+            plot.Add.VerticalLine(
+                ToPlotX(marker.Timestamp),
+                1.0f,
+                GetMarkerColor(marker.Kind),
+                LinePattern.Dashed);
+        }
+
+        ApplyGraphXLimits(plot, minimumX, maximumX);
+        RssiPlot.Refresh();
+    }
+
+    private static void ApplyGraphXLimits(Plot plot, double? minimumX, double? maximumX)
+    {
+        if (minimumX is not null && maximumX is not null)
+        {
+            plot.Axes.SetLimitsX(minimumX.Value, maximumX.Value);
+        }
+    }
+
+    private static IReadOnlyList<RealtimeGraphMarker> SelectRenderedMarkers(
+        IReadOnlyList<RealtimeGraphMarker> markers)
+    {
+        return markers.Count <= MaxRenderedGraphMarkers
+            ? markers
+            : markers.TakeLast(MaxRenderedGraphMarkers).ToArray();
     }
 
     private void ApplyRealtimeSnapshotToStatus(DiagnosticsRealtimeSnapshot snapshot)
@@ -960,9 +1092,101 @@ public partial class MainWindow : Window
         RssiTextBlock.Text = FormatNullable(snapshot.WgbStatus.Rssi);
         TxRateTextBlock.Text = FormatNullable(snapshot.WgbStatus.TxRate);
         RxRateTextBlock.Text = FormatNullable(snapshot.WgbStatus.RxRate);
+        GraphParentApTextBlock.Text = FormatNullable(snapshot.WgbStatus.ParentApName);
+        GraphRssiTextBlock.Text = FormatNullable(snapshot.WgbStatus.Rssi);
+        GraphChannelTextBlock.Text = FormatNullable(snapshot.WgbStatus.Channel);
+        GraphRadioIdTextBlock.Text = FormatNullable(snapshot.WgbStatus.RadioId);
+        DashboardWgbStatusTextBlock.Text = FormatDashboardWgbStatus(snapshot.WgbStatus.Status);
         AssociationStatusTextBlock.Text = string.IsNullOrWhiteSpace(snapshot.WgbStatus.AssociationStatus)
             ? "Unknown"
             : snapshot.WgbStatus.AssociationStatus;
+
+        ApplyDashboardSummary(snapshot);
+    }
+
+    private void ApplyDashboardSummary(DiagnosticsRealtimeSnapshot snapshot)
+    {
+        var lossThresholdMilliseconds = GetDashboardLossThresholdMilliseconds();
+        var pingStatus = snapshot.PingStatus;
+        var dashboardStatus = DetermineDashboardStatus(pingStatus, lossThresholdMilliseconds);
+        DashboardStatusTextBlock.Text = dashboardStatus;
+        DashboardStatusSymbolTextBlock.Text = dashboardStatus switch
+        {
+            "OK" => "OK",
+            "DEGRADED" => "!",
+            "OUTAGE" => "X",
+            _ => "?"
+        };
+
+        DashboardInterruptionTextBlock.Text = pingStatus.ConsecutiveLoss > 0
+            ? $"NETWORK INTERRUPTION - {FormatDuration(pingStatus.CurrentLossWindow)}"
+            : "No active interruption";
+
+        var latestRoam = snapshot.RoamEvents.LastOrDefault();
+        if (latestRoam is null)
+        {
+            DashboardRoamCorrelationTextBlock.Text = "Roam: -";
+            DashboardPreRoamRssiTextBlock.Text = "RSSI before roam: -";
+            return;
+        }
+
+        var roamText = $"{FormatNullable(latestRoam.OldParentApName)} -> {FormatNullable(latestRoam.NewParentApName)}";
+        if (pingStatus.CurrentLossStartedAt is not null
+            && latestRoam.Timestamp >= pingStatus.CurrentLossStartedAt.Value.AddSeconds(-5))
+        {
+            DashboardRoamCorrelationTextBlock.Text = $"Roam near interruption: {roamText}";
+        }
+        else
+        {
+            DashboardRoamCorrelationTextBlock.Text = $"Latest roam: {roamText}";
+        }
+
+        DashboardPreRoamRssiTextBlock.Text = $"RSSI before roam: {FormatNullable(latestRoam.OldRssi)}";
+    }
+
+    private string DetermineDashboardStatus(
+        PingRealtimeStatus pingStatus,
+        int lossThresholdMilliseconds)
+    {
+        if (pingStatus.ConsecutiveLoss > 0
+            && pingStatus.CurrentLossWindow.TotalMilliseconds >= lossThresholdMilliseconds)
+        {
+            return "OUTAGE";
+        }
+
+        if (pingStatus.Status.Equals("Alert", StringComparison.OrdinalIgnoreCase))
+        {
+            return "OUTAGE";
+        }
+
+        if (pingStatus.ConsecutiveLoss > 0)
+        {
+            return "DEGRADED";
+        }
+
+        if (pingStatus.CurrentRoundTripTime is not null
+            && pingStatus.CurrentRoundTripTime.Value.TotalMilliseconds >= lossThresholdMilliseconds)
+        {
+            return "DEGRADED";
+        }
+
+        if (pingStatus.Status.Equals("Error", StringComparison.OrdinalIgnoreCase))
+        {
+            return "DEGRADED";
+        }
+
+        return "OK";
+    }
+
+    private int GetDashboardLossThresholdMilliseconds()
+    {
+        return int.TryParse(
+            LossThresholdMillisecondsTextBox.Text,
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var threshold)
+            ? Math.Max(1, threshold)
+            : WgbDiagnosticsOptions.CreateDefault().LossThresholdMilliseconds;
     }
 
     private static double ToPlotX(DateTimeOffset timestamp)
@@ -985,7 +1209,7 @@ public partial class MainWindow : Window
     {
         if (marker.Kind == RealtimeGraphMarkerKind.ParentApChanged)
         {
-            return $"{FormatNullable(marker.OldParentApName)} -> {FormatNullable(marker.NewParentApName)} ch {FormatNullable(marker.OldChannel)} -> {FormatNullable(marker.NewChannel)} {marker.RoamClassification}";
+            return $"{FormatNullable(marker.OldParentApName)} -> {FormatNullable(marker.NewParentApName)} ch {FormatNullable(marker.OldChannel)} -> {FormatNullable(marker.NewChannel)} radio {FormatNullable(marker.OldRadioId)} -> {FormatNullable(marker.NewRadioId)} {marker.RoamClassification}";
         }
 
         return marker.Label;
@@ -1001,7 +1225,52 @@ public partial class MainWindow : Window
         var recent = markers
             .TakeLast(4)
             .Select(marker => $"{marker.Timestamp.ToLocalTime():HH:mm:ss} {FormatMarkerLabel(marker)}");
-        return $"Markers: {string.Join(" | ", recent)}";
+        var prefix = markers.Count > MaxRenderedGraphMarkers
+            ? $"Markers: latest {MaxRenderedGraphMarkers} of {markers.Count}; "
+            : "Markers: ";
+        return $"{prefix}{string.Join(" | ", recent)}";
+    }
+
+    private static string FormatRoamTimelineEvent(RealtimeRoamEvent roamEvent)
+    {
+        var timestamp = roamEvent.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        return $"{timestamp} {FormatNullable(roamEvent.OldParentApName)} -> {FormatNullable(roamEvent.NewParentApName)} ch {FormatNullable(roamEvent.OldChannel)} -> {FormatNullable(roamEvent.NewChannel)} radio {FormatNullable(roamEvent.OldRadioId)} -> {FormatNullable(roamEvent.NewRadioId)} RSSI before={FormatNullable(roamEvent.OldRssi)} {roamEvent.RoamClassification}";
+    }
+
+    private static string FormatWgbPollEvent(WgbPollEvent pollEvent)
+    {
+        var timestamp = pollEvent.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        var association = pollEvent.Association is null
+            ? ""
+            : $" AP={FormatNullable(pollEvent.Association.ParentApName)} RSSI={FormatNullable(pollEvent.Association.Rssi)} ch={FormatNullable(pollEvent.Association.Channel)} radio={FormatNullable(pollEvent.Association.RadioId)}";
+        var roam = pollEvent.Kind == WgbPollEventKind.ParentApChanged
+            ? $" {FormatNullable(pollEvent.OldParentApName)} -> {FormatNullable(pollEvent.NewParentApName)} {pollEvent.RoamClassification}"
+            : "";
+        var message = string.IsNullOrWhiteSpace(pollEvent.Message)
+            ? ""
+            : $" {pollEvent.Message}";
+
+        return $"{timestamp} {pollEvent.Kind}{association}{roam}{message}";
+    }
+
+    private static string FormatDashboardWgbStatus(string status)
+    {
+        if (status.Contains("Disconnected", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("failed", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("error", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Disconnected";
+        }
+
+        if (status.Contains("Connected", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("succeeded", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("updated", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("Roam", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Connected";
+        }
+
+        return status;
     }
 
     private static string FormatRoundTripTime(TimeSpan? roundTripTime)
@@ -1035,6 +1304,14 @@ public partial class MainWindow : Window
         var message = string.IsNullOrWhiteSpace(monitorEvent.Message) ? "" : $" {monitorEvent.Message}";
 
         return $"{timestamp} #{monitorEvent.SequenceNumber} {monitorEvent.Kind} RTT={rtt} Loss={monitorEvent.ConsecutiveLoss} Window={monitorEvent.EstimatedLossWindowMilliseconds} ms{message}";
+    }
+
+    private static void TrimItems(ItemsControl itemsControl, int maxItems)
+    {
+        while (itemsControl.Items.Count > maxItems)
+        {
+            itemsControl.Items.RemoveAt(itemsControl.Items.Count - 1);
+        }
     }
 
     private static string FormatNullable(string? value)

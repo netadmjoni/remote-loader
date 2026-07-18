@@ -1,3 +1,4 @@
+using System.Globalization;
 using WgbDiagnostics.Core.Configuration;
 using WgbDiagnostics.Core.Monitoring;
 using WgbDiagnostics.Core.Wgb;
@@ -8,7 +9,9 @@ public sealed class DiagnosticsRealtimeModel
 {
     private readonly object _sync = new();
     private readonly List<PingObservation> _pingObservations = [];
+    private readonly List<RssiObservation> _rssiObservations = [];
     private readonly List<RealtimeGraphMarker> _markers = [];
+    private readonly List<RealtimeRoamEvent> _roamEvents = [];
     private RealtimeGraphOptions _options;
     private PingRealtimeStatus _pingStatus = PingRealtimeStatus.Empty;
     private WgbRealtimeStatus _wgbStatus = WgbRealtimeStatus.Empty;
@@ -34,7 +37,9 @@ public sealed class DiagnosticsRealtimeModel
         lock (_sync)
         {
             _pingObservations.Clear();
+            _rssiObservations.Clear();
             _markers.Clear();
+            _roamEvents.Clear();
         }
     }
 
@@ -43,7 +48,9 @@ public sealed class DiagnosticsRealtimeModel
         lock (_sync)
         {
             _pingObservations.Clear();
+            _rssiObservations.Clear();
             _markers.Clear();
+            _roamEvents.Clear();
             _pingStatus = PingRealtimeStatus.Empty;
             _wgbStatus = WgbRealtimeStatus.Empty;
             _startedAt = null;
@@ -93,7 +100,15 @@ public sealed class DiagnosticsRealtimeModel
         lock (_sync)
         {
             NoteTimestamp(pollEvent.Timestamp);
+            var previousRssi = _wgbStatus.Rssi;
             ApplyWgbStatus(pollEvent);
+
+            if (pollEvent.Association is not null
+                && ShouldRecordRssi(pollEvent.Kind)
+                && TryParseRssi(pollEvent.Association.Rssi, out var rssi))
+            {
+                InsertOrReplaceRssiObservation(new RssiObservation(pollEvent.Timestamp, rssi));
+            }
 
             if (pollEvent.Kind == WgbPollEventKind.ParentApChanged)
             {
@@ -110,6 +125,19 @@ public sealed class DiagnosticsRealtimeModel
                     pollEvent.OldRadioId,
                     pollEvent.NewRadioId,
                     pollEvent.RoamClassification));
+
+                InsertRoamEvent(new RealtimeRoamEvent(
+                    pollEvent.Timestamp,
+                    pollEvent.OldParentApName,
+                    pollEvent.NewParentApName,
+                    pollEvent.OldParentBssid,
+                    pollEvent.NewParentBssid,
+                    pollEvent.OldChannel,
+                    pollEvent.NewChannel,
+                    pollEvent.OldRadioId,
+                    pollEvent.NewRadioId,
+                    pollEvent.RoamClassification,
+                    previousRssi));
             }
 
             TrimToWindow(GetTrimAnchor());
@@ -131,7 +159,9 @@ public sealed class DiagnosticsRealtimeModel
 
             return new DiagnosticsRealtimeSnapshot(
                 BuildSegments(),
+                BuildRssiPoints(),
                 _markers.ToArray(),
+                _roamEvents.ToArray(),
                 _pingStatus with { Runtime = runtime },
                 _wgbStatus,
                 _options);
@@ -149,6 +179,8 @@ public sealed class DiagnosticsRealtimeModel
                 CurrentRoundTripTime = monitorEvent.RoundTripTime,
                 TotalOk = status.TotalOk + 1,
                 ConsecutiveLoss = 0,
+                CurrentLossWindow = TimeSpan.Zero,
+                CurrentLossStartedAt = null,
                 Status = "OK"
             },
             IcmpMonitorEventKind.LossStarted => status with
@@ -156,6 +188,8 @@ public sealed class DiagnosticsRealtimeModel
                 CurrentRoundTripTime = null,
                 TotalLost = status.TotalLost + 1,
                 ConsecutiveLoss = monitorEvent.ConsecutiveLoss,
+                CurrentLossWindow = TimeSpan.FromMilliseconds(monitorEvent.EstimatedLossWindowMilliseconds),
+                CurrentLossStartedAt = monitorEvent.Timestamp,
                 Status = "Loss"
             },
             IcmpMonitorEventKind.Loss => status with
@@ -163,24 +197,32 @@ public sealed class DiagnosticsRealtimeModel
                 CurrentRoundTripTime = null,
                 TotalLost = status.TotalLost + 1,
                 ConsecutiveLoss = monitorEvent.ConsecutiveLoss,
+                CurrentLossWindow = TimeSpan.FromMilliseconds(monitorEvent.EstimatedLossWindowMilliseconds),
+                CurrentLossStartedAt = status.CurrentLossStartedAt ?? monitorEvent.Timestamp,
                 Status = "Loss"
             },
             IcmpMonitorEventKind.AlertThresholdReached => status with
             {
                 CurrentRoundTripTime = null,
                 ConsecutiveLoss = monitorEvent.ConsecutiveLoss,
+                CurrentLossWindow = TimeSpan.FromMilliseconds(monitorEvent.EstimatedLossWindowMilliseconds),
+                CurrentLossStartedAt = status.CurrentLossStartedAt ?? monitorEvent.Timestamp,
                 Status = "Alert"
             },
             IcmpMonitorEventKind.Recovered => status with
             {
                 CurrentRoundTripTime = monitorEvent.RoundTripTime,
                 ConsecutiveLoss = 0,
+                CurrentLossWindow = TimeSpan.Zero,
+                CurrentLossStartedAt = null,
                 Status = "Recovered"
             },
             IcmpMonitorEventKind.Error => status with
             {
                 CurrentRoundTripTime = null,
                 ConsecutiveLoss = monitorEvent.ConsecutiveLoss,
+                CurrentLossWindow = TimeSpan.FromMilliseconds(monitorEvent.EstimatedLossWindowMilliseconds),
+                CurrentLossStartedAt = status.CurrentLossStartedAt ?? monitorEvent.Timestamp,
                 Status = "Error"
             },
             _ => status
@@ -231,6 +273,30 @@ public sealed class DiagnosticsRealtimeModel
         _wgbStatus = status;
     }
 
+    private static bool ShouldRecordRssi(WgbPollEventKind kind)
+    {
+        return kind is WgbPollEventKind.PollSucceeded
+            or WgbPollEventKind.AssociationUpdated
+            or WgbPollEventKind.ParentApChanged;
+    }
+
+    private static bool TryParseRssi(string? value, out double rssi)
+    {
+        rssi = 0;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value
+            .Trim()
+            .Replace("dBm", "", StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out rssi)
+            || double.TryParse(normalized, NumberStyles.Float, CultureInfo.CurrentCulture, out rssi);
+    }
+
     private void NoteTimestamp(DateTimeOffset timestamp)
     {
         _startedAt ??= timestamp;
@@ -261,8 +327,25 @@ public sealed class DiagnosticsRealtimeModel
         _pingObservations.Insert(index, observation);
     }
 
+    private void InsertOrReplaceRssiObservation(RssiObservation observation)
+    {
+        var index = _rssiObservations.BinarySearch(observation, RssiObservationTimestampComparer.Instance);
+        if (index >= 0)
+        {
+            _rssiObservations[index] = observation;
+            return;
+        }
+
+        _rssiObservations.Insert(~index, observation);
+    }
+
     private void InsertMarker(RealtimeGraphMarker marker)
     {
+        if (_markers.Contains(marker))
+        {
+            return;
+        }
+
         var index = _markers.BinarySearch(marker, RealtimeGraphMarkerTimestampComparer.Instance);
         if (index < 0)
         {
@@ -270,6 +353,38 @@ public sealed class DiagnosticsRealtimeModel
         }
 
         _markers.Insert(index, marker);
+    }
+
+    private void InsertRoamEvent(RealtimeRoamEvent roamEvent)
+    {
+        if (_roamEvents.Any(existing => IsSameRoamEvent(existing, roamEvent)))
+        {
+            return;
+        }
+
+        var index = _roamEvents.BinarySearch(roamEvent, RealtimeRoamEventTimestampComparer.Instance);
+        if (index < 0)
+        {
+            index = ~index;
+        }
+
+        _roamEvents.Insert(index, roamEvent);
+    }
+
+    private static bool IsSameRoamEvent(
+        RealtimeRoamEvent left,
+        RealtimeRoamEvent right)
+    {
+        return left.Timestamp == right.Timestamp
+            && left.OldParentApName == right.OldParentApName
+            && left.NewParentApName == right.NewParentApName
+            && left.OldParentBssid == right.OldParentBssid
+            && left.NewParentBssid == right.NewParentBssid
+            && left.OldChannel == right.OldChannel
+            && left.NewChannel == right.NewChannel
+            && left.OldRadioId == right.OldRadioId
+            && left.NewRadioId == right.NewRadioId
+            && left.RoamClassification == right.RoamClassification;
     }
 
     private IReadOnlyList<RttGraphSegment> BuildSegments()
@@ -303,14 +418,25 @@ public sealed class DiagnosticsRealtimeModel
         }
     }
 
+    private IReadOnlyList<RssiGraphPoint> BuildRssiPoints()
+    {
+        return _rssiObservations
+            .Select(observation => new RssiGraphPoint(observation.Timestamp, observation.Rssi))
+            .ToArray();
+    }
+
     private void TrimToWindow(DateTimeOffset anchor)
     {
         var cutoff = anchor - _options.VisibleWindow;
         _pingObservations.RemoveAll(observation => observation.Timestamp < cutoff);
+        _rssiObservations.RemoveAll(observation => observation.Timestamp < cutoff);
         _markers.RemoveAll(marker => marker.Timestamp < cutoff);
+        _roamEvents.RemoveAll(roamEvent => roamEvent.Timestamp < cutoff);
 
         TrimOldest(_pingObservations, _options.MaxDataPoints);
+        TrimOldest(_rssiObservations, _options.MaxDataPoints);
         TrimOldest(_markers, _options.MaxMarkers);
+        TrimOldest(_roamEvents, _options.MaxMarkers);
     }
 
     private static void TrimOldest<T>(List<T> items, int maxItems)
@@ -339,6 +465,8 @@ public sealed class DiagnosticsRealtimeModel
         }
     }
 
+    private sealed record RssiObservation(DateTimeOffset Timestamp, double Rssi);
+
     private sealed class PingObservationTimestampComparer : IComparer<PingObservation>
     {
         public static PingObservationTimestampComparer Instance { get; } = new();
@@ -349,11 +477,31 @@ public sealed class DiagnosticsRealtimeModel
         }
     }
 
+    private sealed class RssiObservationTimestampComparer : IComparer<RssiObservation>
+    {
+        public static RssiObservationTimestampComparer Instance { get; } = new();
+
+        public int Compare(RssiObservation? x, RssiObservation? y)
+        {
+            return Nullable.Compare(x?.Timestamp, y?.Timestamp);
+        }
+    }
+
     private sealed class RealtimeGraphMarkerTimestampComparer : IComparer<RealtimeGraphMarker>
     {
         public static RealtimeGraphMarkerTimestampComparer Instance { get; } = new();
 
         public int Compare(RealtimeGraphMarker? x, RealtimeGraphMarker? y)
+        {
+            return Nullable.Compare(x?.Timestamp, y?.Timestamp);
+        }
+    }
+
+    private sealed class RealtimeRoamEventTimestampComparer : IComparer<RealtimeRoamEvent>
+    {
+        public static RealtimeRoamEventTimestampComparer Instance { get; } = new();
+
+        public int Compare(RealtimeRoamEvent? x, RealtimeRoamEvent? y)
         {
             return Nullable.Compare(x?.Timestamp, y?.Timestamp);
         }
@@ -382,7 +530,9 @@ public sealed record RealtimeGraphOptions(
 
 public sealed record DiagnosticsRealtimeSnapshot(
     IReadOnlyList<RttGraphSegment> RttSegments,
+    IReadOnlyList<RssiGraphPoint> RssiPoints,
     IReadOnlyList<RealtimeGraphMarker> Markers,
+    IReadOnlyList<RealtimeRoamEvent> RoamEvents,
     PingRealtimeStatus PingStatus,
     WgbRealtimeStatus WgbStatus,
     RealtimeGraphOptions Options);
@@ -391,6 +541,8 @@ public sealed record RttGraphSegment(IReadOnlyList<RttGraphPoint> Points);
 
 public sealed record RttGraphPoint(DateTimeOffset Timestamp, double RoundTripTimeMilliseconds);
 
+public sealed record RssiGraphPoint(DateTimeOffset Timestamp, double Rssi);
+
 public sealed record PingRealtimeStatus(
     TimeSpan? CurrentRoundTripTime,
     long TotalOk,
@@ -398,6 +550,8 @@ public sealed record PingRealtimeStatus(
     int ConsecutiveLoss,
     TimeSpan LongestOutage,
     TimeSpan Runtime,
+    TimeSpan CurrentLossWindow,
+    DateTimeOffset? CurrentLossStartedAt,
     string Status)
 {
     public static PingRealtimeStatus Empty { get; } = new(
@@ -407,6 +561,8 @@ public sealed record PingRealtimeStatus(
         ConsecutiveLoss: 0,
         LongestOutage: TimeSpan.Zero,
         Runtime: TimeSpan.Zero,
+        CurrentLossWindow: TimeSpan.Zero,
+        CurrentLossStartedAt: null,
         Status: "Stopped");
 }
 
@@ -446,6 +602,19 @@ public sealed record RealtimeGraphMarker(
     string? OldRadioId = null,
     string? NewRadioId = null,
     WgbRoamClassification? RoamClassification = null);
+
+public sealed record RealtimeRoamEvent(
+    DateTimeOffset Timestamp,
+    string? OldParentApName,
+    string? NewParentApName,
+    string? OldParentBssid,
+    string? NewParentBssid,
+    string? OldChannel,
+    string? NewChannel,
+    string? OldRadioId,
+    string? NewRadioId,
+    WgbRoamClassification RoamClassification,
+    string? OldRssi = null);
 
 public enum RealtimeGraphMarkerKind
 {

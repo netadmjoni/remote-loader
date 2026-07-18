@@ -14,6 +14,12 @@ public sealed class WgbDiagnosticsOptions
 
     public string EncryptedPasswordPlaceholder { get; set; } = "";
 
+    public bool UseEnableMode { get; set; }
+
+    public string EnableCommand { get; set; } = "enable";
+
+    public string EncryptedEnablePasswordPlaceholder { get; set; } = "";
+
     public int WgbPollIntervalSeconds { get; set; } = 1;
 
     public string WgbCommand { get; set; } = "show wgb dot11 associations";

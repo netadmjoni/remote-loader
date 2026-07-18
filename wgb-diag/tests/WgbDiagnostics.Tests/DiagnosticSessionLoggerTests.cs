@@ -142,23 +142,24 @@ public sealed class DiagnosticSessionLoggerTests
     {
         await using var testDirectory = TempDiagnosticDirectory.Create();
         const string password = "super-secret-password";
+        const string enablePassword = "enable-secret-password";
         const string username = "admin-user";
         var logger = new DiagnosticSessionLogger(new FakeDiagnosticClock());
         var session = await logger.StartSessionAsync(
             CreateLoggerOptions(
                 testDirectory.Path,
                 rawLoggingEnabled: true,
-                sensitiveValues: [password, username]),
-            CreateConfigSnapshot(username, password),
+                sensitiveValues: [password, enablePassword, username]),
+            CreateConfigSnapshot(username, password, enablePassword),
             CancellationToken.None);
 
-        await logger.LogPingEventAsync(Ping(IcmpMonitorEventKind.Error, sequence: 1, message: $"failure {password}"));
+        await logger.LogPingEventAsync(Ping(IcmpMonitorEventKind.Error, sequence: 1, message: $"failure {password} {enablePassword}"));
         await logger.LogWgbEventAsync(new WgbPollEvent(
             WgbPollEventKind.PollSucceeded,
             DateTimeOffset.UtcNow,
             WgbAssociationSnapshot.Unknown,
             ParseResult: null,
-            RawOutput: $"raw output {username} {password}",
+            RawOutput: $"raw output {username} {password} {enablePassword}",
             Message: $"ok {username}"));
         await logger.StopSessionAsync(CancellationToken.None);
 
@@ -168,6 +169,7 @@ public sealed class DiagnosticSessionLoggerTests
                 .Select(File.ReadAllText));
 
         Assert.DoesNotContain(password, allText);
+        Assert.DoesNotContain(enablePassword, allText);
         Assert.DoesNotContain(username, allText);
         Assert.Contains("[redacted]", allText);
     }
@@ -190,12 +192,14 @@ public sealed class DiagnosticSessionLoggerTests
 
     private static WgbDiagnosticsOptions CreateConfigSnapshot(
         string username = "root",
-        string passwordPlaceholder = "")
+        string passwordPlaceholder = "",
+        string enablePasswordPlaceholder = "")
     {
         return new WgbDiagnosticsOptions
         {
             SshUsername = username,
-            EncryptedPasswordPlaceholder = passwordPlaceholder
+            EncryptedPasswordPlaceholder = passwordPlaceholder,
+            EncryptedEnablePasswordPlaceholder = enablePasswordPlaceholder
         };
     }
 
