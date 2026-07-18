@@ -24,7 +24,6 @@
 #
 # Options:
 #   --interval <seconds>       Poll interval. Default: 1
-#   --interval-ms <ms>         Poll interval in milliseconds
 #   --reconnect <seconds>      Reconnect delay after failure. Default: 60
 #   --log-dir <folder>         Folder for automatic daily logs. Default: ./logs
 #   --log <file>               Specific human-readable log file
@@ -35,7 +34,6 @@
 #   --verbose-roam             Print compact FROM -> TO roam lines in terminal
 #   --warn-same-channel        Print warning if roaming to another AP on same channel
 #   --debug                    Show raw SSH/CLI output for troubleshooting login/enable
-#   --version                  Print version and exit
 #   --help                     Show help
 #
 # Default logging:
@@ -65,7 +63,6 @@ proc usage {} {
   puts ""
   puts "Options:"
   puts "  --interval <seconds>       Poll interval, default 1"
-  puts "  --interval-ms <ms>         Poll interval in milliseconds"
   puts "  --reconnect <seconds>      Reconnect delay, default 60"
   puts "  --log-dir <folder>         Log folder, default ./logs"
   puts "  --log <file>               Specific human-readable log file"
@@ -76,13 +73,7 @@ proc usage {} {
   puts "  --verbose-roam             Print compact FROM -> TO roam lines"
   puts "  --warn-same-channel        Warn if WGB roams between APs on same channel"
   puts "  --debug                    Show raw SSH/CLI output for troubleshooting"
-  puts "  --version                  Print version and exit"
   puts "  --help                     Show this help"
-}
-
-if {$argc == 1 && [lindex $argv 0] eq "--version"} {
-  puts "wgbdiag v$VERSION"
-  exit 0
 }
 
 if {$argc < 4} {
@@ -96,7 +87,6 @@ set loginpw  [lindex $argv 2]
 set enablepw [lindex $argv 3]
 
 set interval 1
-set interval_ms ""
 set reconnect_delay 60
 set logdir "./logs"
 set logfile ""
@@ -116,11 +106,6 @@ while {$i < $argc} {
     "--interval" {
       incr i
       set interval [lindex $argv $i]
-      set interval_ms ""
-    }
-    "--interval-ms" {
-      incr i
-      set interval_ms [lindex $argv $i]
     }
     "--reconnect" {
       incr i
@@ -162,10 +147,6 @@ while {$i < $argc} {
       set debug 1
       log_user 1
     }
-    "--version" {
-      puts "wgbdiag v$VERSION"
-      exit 0
-    }
     "--help" {
       usage
       exit 0
@@ -184,11 +165,6 @@ while {$i < $argc} {
 if {$roam_only} {
   set verbose_roam 1
   set roam_notify 1
-}
-
-set interval_label "${interval}s"
-if {$interval_ms ne ""} {
-  set interval_label "${interval_ms}ms"
 }
 
 set down_since 0
@@ -479,7 +455,7 @@ proc human_roam {from_ap to_ap from_rssi rssi from_ch ch from_radio radio from_r
 ensure_logdir
 csv_init
 
-out "[timestamp] INFO wgbdiag v$VERSION starting HOST=$host INTERVAL=$interval_label RECONNECT=${reconnect_delay}s ROAM_ONLY=$roam_only ROAM_NOTIFY=$roam_notify VERBOSE_ROAM=$verbose_roam WARN_SAME_CHANNEL=$warn_same_channel LOGDIR=$logdir LOG=[current_logfile] CSV=[current_csvfile]"
+out "[timestamp] INFO wgbdiag v$VERSION starting HOST=$host INTERVAL=${interval}s RECONNECT=${reconnect_delay}s ROAM_ONLY=$roam_only ROAM_NOTIFY=$roam_notify VERBOSE_ROAM=$verbose_roam WARN_SAME_CHANNEL=$warn_same_channel LOGDIR=$logdir LOG=[current_logfile] CSV=[current_csvfile]"
 
 while {1} {
   out "[timestamp] INFO Connecting to $host..."
@@ -628,11 +604,7 @@ while {1} {
           set last_rate $rate
         }
 
-        if {$interval_ms ne ""} {
-          after $interval_ms
-        } else {
-          sleep $interval
-        }
+        sleep $interval
       }
 
       timeout {
