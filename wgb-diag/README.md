@@ -11,7 +11,7 @@ The installer build publishes the WPF app as a .NET 8 self-contained `win-x64` a
 Expected artifact:
 
 ```text
-artifacts\installer\WgbDiagnostics-0.1.2-win-x64.msi
+artifacts\installer\WgbDiagnostics-0.1.12-win-x64.msi
 ```
 
 ## Installation
@@ -19,25 +19,25 @@ artifacts\installer\WgbDiagnostics-0.1.2-win-x64.msi
 Interactive installation:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.2-win-x64.msi
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.12-win-x64.msi
 ```
 
 Silent installation with desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.2-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.12-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
 ```
 
 Silent installation without desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.2-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.12-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
 Silent uninstallation using the MSI:
 
 ```powershell
-msiexec /x artifacts\installer\WgbDiagnostics-0.1.2-win-x64.msi /qn /norestart
+msiexec /x artifacts\installer\WgbDiagnostics-0.1.12-win-x64.msi /qn /norestart
 ```
 
 ## Installed locations
@@ -57,14 +57,34 @@ Per-user configuration and writable data:
 
 The MSI does not include credentials and the application does not require administrator privileges for normal use. Installation is per-machine and may require elevation.
 
+## ICMP timing semantics
+
+Default ICMP settings match `ping-script/loss_monitor.sh` defaults:
+
+```text
+ICMP interval: 100 ms
+ICMP timeout: 1000 ms
+Loss alert threshold: 600 ms
+```
+
+`loss_monitor.sh` runs the platform `ping` process with `-i 0.1 -W 1 -O`. The script reads ping output serially and treats each `no answer yet` line as one lost probe. WGB Diagnostics schedules probes every configured interval and allows probes to overlap when timeout is longer than interval. With the defaults above, up to about ten 100 ms probes can be in flight before an older probe reaches its 1000 ms timeout.
+
+If a newer probe has already succeeded before an older probe times out, WGB Diagnostics records a `PACKET_LOSS` event with `applied_to_state=false`. This increments lost-probe statistics and is visible in All pings and Events only, but it does not create `LOSS_START`, `ALERT`, `RECOVER`, an outage duration, or an active interruption.
+
 ## Manual GUI regression test
 
 Realtime graph interaction:
 
-1. Run ping monitoring for at least 10 minutes.
-2. Cause several loss/recover events.
-3. Move the mouse repeatedly over both RTT and RSSI graphs.
-4. Pause and resume the graph while monitoring continues.
-5. Click Reset zoom.
-6. Confirm no labels, color blocks, selections, or duplicate markers accumulate on either graph.
-7. Confirm the Dashboard remains readable at 1366x768.
+1. Start ping monitoring and WGB polling.
+2. Confirm the graph window starts at 10 minutes.
+3. Use the 1, 5, 10, 30, and 60 minute presets and confirm both RTT and RSSI X-axes change together.
+4. Zoom with the mouse wheel and pan by dragging either graph; confirm both graphs keep the same time window.
+5. Pause the graph, let monitoring continue, then resume and confirm autoscroll/manual view state behaves predictably.
+6. Click Reset zoom and confirm the view returns to the current time window with a sensible Y-scale.
+7. Move the mouse repeatedly over both graphs and confirm no labels, color blocks, selections, or duplicate markers accumulate.
+8. Cause loss/recover events and confirm ICMP event view shows LAST_OK, LOSS_START, ALERT, RECOVER, and ERROR only.
+9. Switch to raw ping view and confirm individual probes are visible.
+10. Trigger or load WGB roam output and confirm roam markers appear on both graphs and in the roaming timeline.
+11. Confirm the compact WGB panel shows Parent AP, BSSID, channel, radio ID, RSSI, rates, association status, last poll, data age, and last roam.
+12. Save SSH and enable passwords with the save checkboxes, reload settings, then use Forget buttons and confirm no cleartext appears in `%LocalAppData%\WgbDiagnostics\appsettings.json` or session logs.
+13. Confirm the Dashboard remains readable at 1366x768.

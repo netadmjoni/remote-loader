@@ -11,7 +11,10 @@ public sealed record WgbAssociationSnapshot(
     string? WgbIp,
     string AssociationStatus,
     string? CandidateApName,
-    string? CandidateBssid)
+    string? CandidateBssid,
+    string? ConnectedDuration = null,
+    string? AuthType = null,
+    string? KeyManagementType = null)
 {
     public static WgbAssociationSnapshot Unknown { get; } = new(
         ParentApName: null,

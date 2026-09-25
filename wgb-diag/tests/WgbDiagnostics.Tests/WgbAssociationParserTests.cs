@@ -25,7 +25,7 @@ public sealed class WgbAssociationParserTests
 
         Assert.Equal("AP-NORTH-01", association.ParentApName);
         Assert.Equal("44", association.Channel);
-        Assert.Equal("-62 dBm", association.Rssi);
+        Assert.Equal("-62", association.Rssi);
         Assert.Equal("1", association.RadioId);
         Assert.Equal("144 Mbps", association.TxRate);
         Assert.Equal("130 Mbps", association.RxRate);
@@ -52,6 +52,57 @@ public sealed class WgbAssociationParserTests
         Assert.Equal("00aa.bbcc.ddee", result.Association.CandidateBssid);
         Assert.Contains("Parent BSSID", result.MatchedFields);
         Assert.Contains("Candidate BSSID", result.MatchedFields);
+    }
+
+    [Fact]
+    public void ParsesReferenceScriptLabelsForIw9167Output()
+    {
+        const string output = """
+            WGB#show wgb dot11 associations
+            Parent AP Name             : MHO1109STV-221-bs218
+            Parent AP MAC              : 0011.2233.4455
+            RSSI                       : 56
+            Channel                    : 44
+            Current Datarate (Tx/Rx)   : 173/144 Mbps
+            Uplink Radio ID            : 1
+            Connected Duration         : 00:01:23
+            Uplink State               : Associated
+            Auth Type                  : WPA2
+            Key management Type        : PSK
+            WGB#
+            """;
+
+        var result = _parser.Parse(output, WgbParserProfiles.Iw9167WgbV1);
+        var association = result.Association;
+
+        Assert.Equal("MHO1109STV-221-bs218", association.ParentApName);
+        Assert.Equal("0011.2233.4455", association.ParentBssid);
+        Assert.Equal("-56", association.Rssi);
+        Assert.Equal("44", association.Channel);
+        Assert.Equal("173 Mbps", association.TxRate);
+        Assert.Equal("144 Mbps", association.RxRate);
+        Assert.Equal("1", association.RadioId);
+        Assert.Equal("Associated", association.AssociationStatus);
+        Assert.Equal("00:01:23", association.ConnectedDuration);
+        Assert.Equal("WPA2", association.AuthType);
+        Assert.Equal("PSK", association.KeyManagementType);
+        Assert.Contains(result.Warnings, warning => warning.Contains("normalized to -56 dBm", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Tx rate", result.MatchedFields);
+        Assert.Contains("Rx rate", result.MatchedFields);
+        Assert.DoesNotContain(result.UnclassifiedLines, line => line.Contains("show wgb dot11 associations", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void StripsAnsiAndControlCharactersBeforeParsing()
+    {
+        const string output = "\u001b[32mParent AP Name\u001b[0m: AP-COLOR\r\nUplink Radio ID:\u0001 2\r\nCurrent Datarate (Tx/Rx): 144 / 173 Mbps\r\n";
+
+        var association = _parser.Parse(output, WgbParserProfiles.Iw9167WgbV1).Association;
+
+        Assert.Equal("AP-COLOR", association.ParentApName);
+        Assert.Equal("2", association.RadioId);
+        Assert.Equal("144 Mbps", association.TxRate);
+        Assert.Equal("173 Mbps", association.RxRate);
     }
 
     [Fact]
@@ -84,7 +135,7 @@ public sealed class WgbAssociationParserTests
         var association = _parser.Parse(output);
 
         Assert.Equal("AP-SOUTH-02", association.ParentApName);
-        Assert.Equal("-70 dBm", association.Rssi);
+        Assert.Equal("-70", association.Rssi);
         Assert.Null(association.Channel);
         Assert.Null(association.RadioId);
         Assert.Equal("Unknown", association.AssociationStatus);
@@ -133,6 +184,42 @@ public sealed class WgbAssociationParserTests
         Assert.Equal("192.0.2.10", association.WgbIp);
     }
 
+    [Theory]
+    [InlineData("RSSI: -56", "-56")]
+    [InlineData("RSSI=-94", "-94")]
+    [InlineData("  RSSI     :      -75    dBm  ", "-75")]
+    public void PreservesSignedRssiValues(string line, string expected)
+    {
+        var association = _parser.Parse($"Parent AP Name: AP-RSSI\r\n{line}", WgbParserProfiles.Iw9167WgbV1).Association;
+
+        Assert.Equal(expected, association.Rssi);
+    }
+
+    [Fact]
+    public void GenericProfileDoesNotSilentlyAcceptPositiveRssiAsDbm()
+    {
+        const string output = """
+            AP=MGN1080STV-223
+            RSSI=45
+            channel=11
+            """;
+
+        var result = _parser.Parse(output, WgbParserProfiles.GenericKeyValue);
+
+        Assert.Equal("MGN1080STV-223", result.Association.ParentApName);
+        Assert.Null(result.Association.Rssi);
+        Assert.Contains(result.Warnings, warning => warning.Contains("no negative sign", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void PositiveSignedRssiCreatesDiagnosticAndIsIgnored()
+    {
+        var result = _parser.Parse("Parent AP Name: AP-BAD\r\nRSSI: +94 dBm", WgbParserProfiles.Iw9167WgbV1);
+
+        Assert.Null(result.Association.Rssi);
+        Assert.Contains(result.Warnings, warning => warning.Contains("positive dBm", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void EmptyOutputReturnsUnknownSnapshot()
     {
@@ -159,5 +246,21 @@ public sealed class WgbAssociationParserTests
         Assert.Equal("AP-EXTRA", association.ParentApName);
         Assert.Equal("149", association.Channel);
         Assert.Equal("Unknown", association.AssociationStatus);
+    }
+
+    [Fact]
+    public void GenericProfileTreatsApAliasAsParentApName()
+    {
+        const string output = """
+            AP=MGN1080STV-223
+            RSSI=-45
+            channel=11
+            """;
+
+        var result = _parser.Parse(output, WgbParserProfiles.GenericKeyValue);
+
+        Assert.Equal("MGN1080STV-223", result.Association.ParentApName);
+        Assert.Equal("-45", result.Association.Rssi);
+        Assert.Equal("11", result.Association.Channel);
     }
 }

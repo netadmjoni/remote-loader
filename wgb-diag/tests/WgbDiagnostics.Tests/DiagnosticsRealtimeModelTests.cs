@@ -44,12 +44,59 @@ public sealed class DiagnosticsRealtimeModelTests
     }
 
     [Fact]
+    public void GenuineCurrentTimeoutFollowedBySuccessTracksOutageDuration()
+    {
+        var model = new DiagnosticsRealtimeModel();
+
+        model.Apply(Ping(IcmpMonitorEventKind.PingReply, seconds: 0, rttMilliseconds: 5));
+        model.Apply(Ping(IcmpMonitorEventKind.LossStarted, seconds: 1, consecutiveLoss: 1, lossWindow: 100));
+        model.Apply(Ping(IcmpMonitorEventKind.Recovered, seconds: 2, rttMilliseconds: 8, lossWindow: 100));
+
+        var snapshot = model.Snapshot(BaseTimestamp.AddSeconds(2));
+
+        Assert.Equal(1, snapshot.PingStatus.TotalLost);
+        Assert.Equal(0, snapshot.PingStatus.ConsecutiveLoss);
+        Assert.Equal(TimeSpan.Zero, snapshot.PingStatus.CurrentLossWindow);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), snapshot.PingStatus.LongestOutage);
+        Assert.Equal("Recovered", snapshot.PingStatus.Status);
+        Assert.Contains(snapshot.Markers, marker => marker.Kind == RealtimeGraphMarkerKind.LossStarted);
+        Assert.Contains(snapshot.Markers, marker => marker.Kind == RealtimeGraphMarkerKind.Recovered);
+    }
+
+    [Fact]
+    public void IsolatedPacketLossIncrementsLostProbesWithoutOutageState()
+    {
+        var model = new DiagnosticsRealtimeModel();
+
+        model.Apply(Ping(IcmpMonitorEventKind.PingReply, seconds: 60, rttMilliseconds: 7));
+        model.Apply(Ping(
+            IcmpMonitorEventKind.PacketLoss,
+            seconds: 52,
+            appliedToState: false,
+            ignoredReason: "OutOfOrderTimeoutAfterNewerSuccess"));
+        model.Apply(Ping(IcmpMonitorEventKind.PingReply, seconds: 61, rttMilliseconds: 6));
+
+        var snapshot = model.Snapshot(BaseTimestamp.AddSeconds(61));
+        var segment = Assert.Single(snapshot.RttSegments);
+
+        Assert.Equal(new[] { 7d, 6d }, segment.Points.Select(point => point.RoundTripTimeMilliseconds).ToArray());
+        Assert.Empty(snapshot.Markers.Where(marker => marker.Kind == RealtimeGraphMarkerKind.LossStarted));
+        Assert.Equal(2, snapshot.PingStatus.TotalOk);
+        Assert.Equal(1, snapshot.PingStatus.TotalLost);
+        Assert.Equal(0, snapshot.PingStatus.ConsecutiveLoss);
+        Assert.Equal(TimeSpan.Zero, snapshot.PingStatus.CurrentLossWindow);
+        Assert.Equal(TimeSpan.Zero, snapshot.PingStatus.LongestOutage);
+        Assert.Equal("OK", snapshot.PingStatus.Status);
+    }
+
+    [Fact]
     public void WindowTrimmingRemovesOldGuiPointsButKeepsCurrentStatus()
     {
         var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(
             TimeSpan.FromMinutes(1),
             MaxDataPoints: 100,
-            MaxMarkers: 100));
+            MaxMarkers: 100,
+            WgbStaleAfter: TimeSpan.FromSeconds(5)));
 
         model.Apply(Ping(IcmpMonitorEventKind.PingReply, seconds: 0, rttMilliseconds: 5));
         model.Apply(Ping(IcmpMonitorEventKind.PingReply, seconds: 30, rttMilliseconds: 6));
@@ -145,7 +192,8 @@ public sealed class DiagnosticsRealtimeModelTests
         var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(
             TimeSpan.FromMinutes(1),
             MaxDataPoints: 100,
-            MaxMarkers: 100));
+            MaxMarkers: 100,
+            WgbStaleAfter: TimeSpan.FromSeconds(5)));
 
         model.Apply(Wgb(WgbPollEventKind.PollSucceeded, seconds: 0, Association("ap-a", "11:11:11:11:11:11", "11", "0", "-70")));
         model.Apply(Wgb(WgbPollEventKind.PollSucceeded, seconds: 30, Association("ap-a", "11:11:11:11:11:11", "11", "0", "-65")));
@@ -167,7 +215,53 @@ public sealed class DiagnosticsRealtimeModelTests
         var snapshot = model.Snapshot(BaseTimestamp.AddSeconds(1));
 
         Assert.Empty(snapshot.RssiPoints);
-        Assert.Equal("unknown", snapshot.WgbStatus.Rssi);
+        Assert.Null(snapshot.WgbStatus.Rssi);
+    }
+
+    [Fact]
+    public void PositiveRssiValuesDoNotCreateGraphPeaks()
+    {
+        var model = new DiagnosticsRealtimeModel();
+
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, seconds: 0, Association("ap-a", "11:11:11:11:11:11", "11", "0", "94")));
+
+        var snapshot = model.Snapshot(BaseTimestamp);
+
+        Assert.Empty(snapshot.RssiPoints);
+        Assert.Null(snapshot.WgbStatus.Rssi);
+    }
+
+    [Fact]
+    public void StrongerRssiHasLargerNegativeValueForGraphOrdering()
+    {
+        var model = new DiagnosticsRealtimeModel();
+
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, seconds: 0, Association("ap-a", "11:11:11:11:11:11", "11", "0", "-90")));
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, seconds: 1, Association("ap-a", "11:11:11:11:11:11", "11", "0", "-40")));
+
+        var points = model.Snapshot(BaseTimestamp.AddSeconds(1)).RssiPoints.ToArray();
+
+        Assert.Equal(new[] { -90d, -40d }, points.Select(point => point.Rssi).ToArray());
+        Assert.True(points[1].Rssi > points[0].Rssi);
+    }
+
+    [Fact]
+    public void WgbStatusBecomesStaleAfterConfiguredThreshold()
+    {
+        var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(
+            TimeSpan.FromMinutes(1),
+            MaxDataPoints: 100,
+            MaxMarkers: 100,
+            WgbStaleAfter: TimeSpan.FromSeconds(5)));
+
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, seconds: 0, Association("ap-a", "11:11:11:11:11:11", "11", "0", "-61")));
+
+        var fresh = model.Snapshot(BaseTimestamp.AddSeconds(5));
+        var stale = model.Snapshot(BaseTimestamp.AddSeconds(6));
+
+        Assert.False(fresh.WgbStatus.IsStale);
+        Assert.True(stale.WgbStatus.IsStale);
+        Assert.Equal("ap-a", stale.WgbStatus.ParentApName);
     }
 
     [Fact]
@@ -279,7 +373,8 @@ public sealed class DiagnosticsRealtimeModelTests
         var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(
             TimeSpan.FromMinutes(1),
             MaxDataPoints: 100,
-            MaxMarkers: 100));
+            MaxMarkers: 100,
+            WgbStaleAfter: TimeSpan.FromSeconds(5)));
 
         model.Apply(Ping(IcmpMonitorEventKind.LossStarted, seconds: 0, consecutiveLoss: 1, lossWindow: 100));
         model.Apply(Ping(IcmpMonitorEventKind.LossStarted, seconds: 90, consecutiveLoss: 1, lossWindow: 100));
@@ -296,7 +391,8 @@ public sealed class DiagnosticsRealtimeModelTests
         var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(
             TimeSpan.FromHours(1),
             MaxDataPoints: 3,
-            MaxMarkers: 2));
+            MaxMarkers: 2,
+            WgbStaleAfter: TimeSpan.FromSeconds(5)));
 
         for (var second = 0; second < 5; second++)
         {
@@ -345,6 +441,7 @@ public sealed class DiagnosticsRealtimeModelTests
         var roamEvent = Assert.Single(snapshot.RoamEvents);
 
         Assert.Equal("-67", roamEvent.OldRssi);
+        Assert.Equal("-62", roamEvent.NewRssi);
     }
 
     private static IcmpMonitorEvent Ping(
@@ -352,7 +449,9 @@ public sealed class DiagnosticsRealtimeModelTests
         int seconds,
         int rttMilliseconds = 0,
         int consecutiveLoss = 0,
-        int lossWindow = 0)
+        int lossWindow = 0,
+        bool appliedToState = true,
+        string? ignoredReason = null)
     {
         return new IcmpMonitorEvent(
             kind,
@@ -361,7 +460,9 @@ public sealed class DiagnosticsRealtimeModelTests
             rttMilliseconds > 0 ? TimeSpan.FromMilliseconds(rttMilliseconds) : null,
             consecutiveLoss,
             lossWindow,
-            kind.ToString());
+            kind.ToString(),
+            AppliedToState: appliedToState,
+            IgnoredReason: ignoredReason);
     }
 
     private static WgbPollEvent Wgb(

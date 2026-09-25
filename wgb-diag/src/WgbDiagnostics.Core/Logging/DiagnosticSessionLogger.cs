@@ -239,10 +239,15 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                 SshPort = options.SshPort,
                 SshUsername = "",
                 EncryptedPasswordPlaceholder = "",
+                SaveSshPassword = false,
                 UseEnableMode = options.UseEnableMode,
                 EnableCommand = options.EnableCommand,
                 EncryptedEnablePasswordPlaceholder = "",
+                SaveEnablePassword = false,
                 WgbPollIntervalSeconds = options.WgbPollIntervalSeconds,
+                WgbReconnectInitialSeconds = options.WgbReconnectInitialSeconds,
+                WgbReconnectMaximumSeconds = options.WgbReconnectMaximumSeconds,
+                WgbStaleAfterSeconds = options.WgbStaleAfterSeconds,
                 WgbCommand = options.WgbCommand,
                 ParserProfile = options.ParserProfile,
                 PingTarget = options.PingTarget,
@@ -254,6 +259,11 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                 DailyRotationEnabled = options.DailyRotationEnabled,
                 RetentionDays = options.RetentionDays,
                 GraphVisibleMinutes = options.GraphVisibleMinutes,
+                LiveDiagnosticsLayout = options.LiveDiagnosticsLayout,
+                IcmpDisplayMode = options.IcmpDisplayMode,
+                WgbDisplayMode = options.WgbDisplayMode,
+                LiveDiagnosticsSplitterPosition = options.LiveDiagnosticsSplitterPosition,
+                EventDisplayBufferSize = options.EventDisplayBufferSize,
                 WgbLogCollectionEnabled = options.WgbLogCollectionEnabled,
                 TftpTimeoutSeconds = options.TftpTimeoutSeconds,
                 MaximumReceivedFileSizeBytes = options.MaximumReceivedFileSizeBytes
@@ -265,7 +275,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
 
         public void WritePingEvent(IcmpMonitorEvent monitorEvent)
         {
-            var eventName = MapPingEventName(monitorEvent.Kind);
+            var eventName = MapPingEventName(monitorEvent);
             if (eventName is not null)
             {
                 if (monitorEvent.Kind == IcmpMonitorEventKind.Error)
@@ -288,16 +298,40 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
 
             if (_options.RawLoggingEnabled)
             {
-                WriteRaw("raw-ping", $"{monitorEvent.Timestamp:O} #{monitorEvent.SequenceNumber} {monitorEvent.Kind} rtt={monitorEvent.RoundTripTime?.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) ?? "-"} loss={monitorEvent.ConsecutiveLoss} window={monitorEvent.EstimatedLossWindowMilliseconds} {Scrub(monitorEvent.Message)}", monitorEvent.Timestamp);
+                WriteRaw(
+                    "raw-ping",
+                    $"{monitorEvent.Timestamp:O} #{monitorEvent.SequenceNumber} {FormatRawPingEventName(monitorEvent)} rtt={monitorEvent.RoundTripTime?.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) ?? "-"} loss={monitorEvent.ConsecutiveLoss} window={monitorEvent.EstimatedLossWindowMilliseconds} started_ms={monitorEvent.StartedAtMilliseconds} completed_ms={monitorEvent.CompletedAtMilliseconds} completion_order={monitorEvent.CompletionOrder} appliedToState={FormatBoolean(monitorEvent.AppliedToState)} ignoredReason={monitorEvent.IgnoredReason ?? ""} highestSequenceAppliedToState={monitorEvent.HighestSequenceAppliedToState} highestCompletedSequence={monitorEvent.HighestCompletedSequence} connectionState={monitorEvent.ConnectionState} {Scrub(monitorEvent.Message)}",
+                    monitorEvent.Timestamp);
             }
         }
 
         public void WriteWgbEvent(WgbPollEvent pollEvent)
         {
-            if (pollEvent.Kind is WgbPollEventKind.AssociationUpdated or WgbPollEventKind.ParentApChanged or WgbPollEventKind.PollFailed)
+            if (WgbAssociationSample.TryCreate(pollEvent, out var sample) && sample is not null)
+            {
+                WriteLine("wgb-samples", "timestamp,parent_ap,parent_bssid,candidate_ap,candidate_bssid,rssi_dbm,channel,tx_rate_mbps,rx_rate_mbps,radio_id,association_state,poll_status,error_reason", CsvRow(
+                    sample.Timestamp,
+                    sample.ParentAp,
+                    sample.ParentBssid,
+                    sample.CandidateAp,
+                    sample.CandidateBssid,
+                    sample.Rssi,
+                    sample.Channel,
+                    sample.TxRateMbps,
+                    sample.RxRateMbps,
+                    sample.RadioId,
+                    sample.AssociationState,
+                    sample.PollStatus,
+                    Scrub(sample.ErrorReason)),
+                    pollEvent.Timestamp);
+            }
+
+            if (ShouldWriteStructuredWgbEvent(pollEvent.Kind))
             {
                 _wgbEvents++;
-                if (pollEvent.Kind == WgbPollEventKind.PollFailed)
+                if (pollEvent.Kind is WgbPollEventKind.PollFailed
+                    or WgbPollEventKind.SessionLost
+                    or WgbPollEventKind.PromptResyncFailed)
                 {
                     _errors++;
                 }
@@ -308,7 +342,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                     pollEvent.Kind.ToString(),
                     Scrub(pollEvent.Message)),
                     pollEvent.Timestamp);
-                WriteLine("wgb-events", "timestamp,event,parent_ap,parent_bssid,channel,rssi,radio_id,tx_rate,rx_rate,wgb_ip,association_status,message", CsvRow(
+                WriteLine("wgb-events", "timestamp,event,parent_ap,parent_bssid,channel,rssi_dbm,radio_id,tx_rate,rx_rate,wgb_ip,association_status,message", CsvRow(
                     pollEvent.Timestamp,
                     pollEvent.Kind.ToString(),
                     pollEvent.Association?.ParentApName,
@@ -350,6 +384,28 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
             }
         }
 
+        private static bool ShouldWriteStructuredWgbEvent(WgbPollEventKind kind)
+        {
+            return kind is WgbPollEventKind.Connecting
+                or WgbPollEventKind.Connected
+                or WgbPollEventKind.PromptDetected
+                or WgbPollEventKind.EnableSucceeded
+                or WgbPollEventKind.CommandStarted
+                or WgbPollEventKind.CommandOutputReceived
+                or WgbPollEventKind.CommandCompleted
+                or WgbPollEventKind.CommandWarning
+                or WgbPollEventKind.PromptResyncStarted
+                or WgbPollEventKind.PromptResyncSucceeded
+                or WgbPollEventKind.PromptResyncFailed
+                or WgbPollEventKind.SessionLost
+                or WgbPollEventKind.ReconnectScheduled
+                or WgbPollEventKind.Disconnected
+                or WgbPollEventKind.PollSucceeded
+                or WgbPollEventKind.PollFailed
+                or WgbPollEventKind.AssociationUpdated
+                or WgbPollEventKind.ParentApChanged;
+        }
+
         private void WriteLastOkBeforeLoss()
         {
             if (_lastSuccessfulPing is null
@@ -371,13 +427,16 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                 eventName,
                 Scrub(monitorEvent.Message)),
                 monitorEvent.Timestamp);
-            WriteLine("ping-events", "timestamp,event,sequence,rtt_ms,consecutive_loss,loss_window_ms,message", CsvRow(
+            WriteLine("ping-events", "timestamp,event,sequence,rtt_ms,consecutive_loss,loss_window_ms,applied_to_state,ignored_reason,connection_state,message", CsvRow(
                 monitorEvent.Timestamp,
                 eventName,
                 monitorEvent.SequenceNumber.ToString(CultureInfo.InvariantCulture),
                 monitorEvent.RoundTripTime?.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) ?? "",
                 monitorEvent.ConsecutiveLoss.ToString(CultureInfo.InvariantCulture),
                 monitorEvent.EstimatedLossWindowMilliseconds.ToString(CultureInfo.InvariantCulture),
+                FormatBoolean(monitorEvent.AppliedToState),
+                monitorEvent.IgnoredReason,
+                monitorEvent.ConnectionState,
                 Scrub(monitorEvent.Message)),
                 monitorEvent.Timestamp);
         }
@@ -522,9 +581,19 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
         }
     }
 
-    private static string? MapPingEventName(IcmpMonitorEventKind kind)
+    private static string? MapPingEventName(IcmpMonitorEvent monitorEvent)
     {
-        return kind switch
+        if (monitorEvent.Kind == IcmpMonitorEventKind.PacketLoss)
+        {
+            return "PACKET_LOSS";
+        }
+
+        if (!monitorEvent.AppliedToState)
+        {
+            return null;
+        }
+
+        return monitorEvent.Kind switch
         {
             IcmpMonitorEventKind.LossStarted => "LOSS_START",
             IcmpMonitorEventKind.AlertThresholdReached => "ALERT",
@@ -532,6 +601,26 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
             IcmpMonitorEventKind.Error => "ERROR",
             _ => null
         };
+    }
+
+    private static string FormatRawPingEventName(IcmpMonitorEvent monitorEvent)
+    {
+        if (monitorEvent.AppliedToState)
+        {
+            return monitorEvent.Kind.ToString();
+        }
+
+        return monitorEvent.Kind switch
+        {
+            IcmpMonitorEventKind.PingReply => "LATE_OK",
+            IcmpMonitorEventKind.Error => "LATE_ERROR",
+            _ => "LATE_TIMEOUT"
+        };
+    }
+
+    private static string FormatBoolean(bool value)
+    {
+        return value ? "true" : "false";
     }
 
     private static string CsvRow(params object?[] values)

@@ -14,13 +14,23 @@ public sealed class WgbDiagnosticsOptions
 
     public string EncryptedPasswordPlaceholder { get; set; } = "";
 
+    public bool SaveSshPassword { get; set; }
+
     public bool UseEnableMode { get; set; }
 
     public string EnableCommand { get; set; } = "enable";
 
     public string EncryptedEnablePasswordPlaceholder { get; set; } = "";
 
+    public bool SaveEnablePassword { get; set; }
+
     public int WgbPollIntervalSeconds { get; set; } = 1;
+
+    public int WgbReconnectInitialSeconds { get; set; } = 2;
+
+    public int WgbReconnectMaximumSeconds { get; set; } = 60;
+
+    public int WgbStaleAfterSeconds { get; set; } = 5;
 
     public string WgbCommand { get; set; } = "show wgb dot11 associations";
 
@@ -42,7 +52,17 @@ public sealed class WgbDiagnosticsOptions
 
     public int RetentionDays { get; set; } = 14;
 
-    public int GraphVisibleMinutes { get; set; } = 60;
+    public int GraphVisibleMinutes { get; set; } = 10;
+
+    public string LiveDiagnosticsLayout { get; set; } = "Auto";
+
+    public string IcmpDisplayMode { get; set; } = "AllPings";
+
+    public string WgbDisplayMode { get; set; } = "AllSamples";
+
+    public double LiveDiagnosticsSplitterPosition { get; set; } = 0.5;
+
+    public int EventDisplayBufferSize { get; set; } = 10_000;
 
     public bool WgbLogCollectionEnabled { get; set; }
 

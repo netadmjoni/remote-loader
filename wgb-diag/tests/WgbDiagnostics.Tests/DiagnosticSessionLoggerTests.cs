@@ -1,3 +1,4 @@
+using System.IO;
 using WgbDiagnostics.Core.Configuration;
 using WgbDiagnostics.Core.Logging;
 using WgbDiagnostics.Core.Monitoring;
@@ -41,7 +42,7 @@ public sealed class DiagnosticSessionLoggerTests
         await logger.StopSessionAsync(CancellationToken.None);
 
         var lines = File.ReadAllLines(Path.Combine(session.SessionDirectory, "ping-events.csv"));
-        Assert.Equal("timestamp,event,sequence,rtt_ms,consecutive_loss,loss_window_ms,message", lines[0]);
+        Assert.Equal("timestamp,event,sequence,rtt_ms,consecutive_loss,loss_window_ms,applied_to_state,ignored_reason,connection_state,message", lines[0]);
     }
 
     [Fact]
@@ -84,12 +85,76 @@ public sealed class DiagnosticSessionLoggerTests
         await logger.LogPingEventAsync(Ping(IcmpMonitorEventKind.PingReply, sequence: 1, rttMilliseconds: 4));
         await logger.LogPingEventAsync(Ping(IcmpMonitorEventKind.LossStarted, sequence: 2));
         await logger.LogPingEventAsync(Ping(IcmpMonitorEventKind.Loss, sequence: 3));
+        await logger.LogPingEventAsync(Ping(
+            IcmpMonitorEventKind.PacketLoss,
+            sequence: 1,
+            message: "late_timeout state_unchanged",
+            appliedToState: false,
+            ignoredReason: "OutOfOrderTimeoutAfterNewerSuccess",
+            highestSequenceAppliedToState: 3,
+            completionOrder: 4));
         await logger.StopSessionAsync(CancellationToken.None);
 
         var rawLog = File.ReadAllText(Path.Combine(session.SessionDirectory, "raw-ping.log"));
         Assert.Contains("PingReply", rawLog);
         Assert.Contains("LossStarted", rawLog);
         Assert.Contains("Loss", rawLog);
+        Assert.Contains("LATE_TIMEOUT", rawLog);
+        Assert.Contains("completion_order=4", rawLog);
+        Assert.Contains("appliedToState=false", rawLog);
+        Assert.Contains("ignoredReason=OutOfOrderTimeoutAfterNewerSuccess", rawLog);
+        Assert.Contains("highestSequenceAppliedToState=3", rawLog);
+    }
+
+    [Fact]
+    public async Task PacketLossIsWrittenToEventOnlyPingCsvWithoutChangingState()
+    {
+        await using var testDirectory = TempDiagnosticDirectory.Create();
+        var logger = new DiagnosticSessionLogger(new FakeDiagnosticClock());
+        var session = await logger.StartSessionAsync(
+            CreateLoggerOptions(testDirectory.Path, rawLoggingEnabled: false),
+            CreateConfigSnapshot(),
+            CancellationToken.None);
+
+        await logger.LogPingEventAsync(Ping(
+            IcmpMonitorEventKind.PacketLoss,
+            sequence: 52,
+            message: "late_timeout state_unchanged",
+            appliedToState: false,
+            ignoredReason: "OutOfOrderTimeoutAfterNewerSuccess",
+            highestSequenceAppliedToState: 60,
+            connectionState: "OK"));
+        await logger.StopSessionAsync(CancellationToken.None);
+
+        var rows = File.ReadAllLines(Path.Combine(session.SessionDirectory, "ping-events.csv"));
+        Assert.Equal(2, rows.Length);
+        Assert.Contains(",PACKET_LOSS,52,", rows[1]);
+        Assert.Contains(",false,OutOfOrderTimeoutAfterNewerSuccess,OK,", rows[1]);
+        Assert.EndsWith(",late_timeout state_unchanged", rows[1]);
+    }
+
+    [Fact]
+    public async Task WgbSampleCsvContainsEveryValidPoll()
+    {
+        await using var testDirectory = TempDiagnosticDirectory.Create();
+        var logger = new DiagnosticSessionLogger(new FakeDiagnosticClock());
+        var session = await logger.StartSessionAsync(
+            CreateLoggerOptions(testDirectory.Path),
+            CreateConfigSnapshot(),
+            CancellationToken.None);
+
+        await logger.LogWgbEventAsync(WgbPoll(milliseconds: 0, txRate: "173 Mbps", rxRate: "144 Mbps"));
+        await logger.LogWgbEventAsync(WgbPoll(milliseconds: 1000, txRate: "144 Mbps", rxRate: "173 Mbps"));
+        await logger.StopSessionAsync(CancellationToken.None);
+
+        var lines = File.ReadAllLines(Path.Combine(session.SessionDirectory, "wgb-samples.csv"));
+
+        Assert.Equal("timestamp,parent_ap,parent_bssid,candidate_ap,candidate_bssid,rssi_dbm,channel,tx_rate_mbps,rx_rate_mbps,radio_id,association_state,poll_status,error_reason", lines[0]);
+        Assert.Equal(3, lines.Length);
+        Assert.Contains("AP-221", lines[1]);
+        Assert.Contains(",-56,", lines[1]);
+        Assert.Contains(",173,144,", lines[1]);
+        Assert.Contains(",144,173,", lines[2]);
     }
 
     [Fact]
@@ -210,7 +275,12 @@ public sealed class DiagnosticSessionLoggerTests
         int consecutiveLoss = 0,
         int lossWindow = 0,
         string? message = null,
-        DateTimeOffset? timestamp = null)
+        DateTimeOffset? timestamp = null,
+        bool appliedToState = true,
+        string? ignoredReason = null,
+        long highestSequenceAppliedToState = 0,
+        long completionOrder = 0,
+        string connectionState = "Unknown")
     {
         return new IcmpMonitorEvent(
             kind,
@@ -219,7 +289,34 @@ public sealed class DiagnosticSessionLoggerTests
             rttMilliseconds > 0 ? TimeSpan.FromMilliseconds(rttMilliseconds) : null,
             consecutiveLoss,
             lossWindow,
-            message);
+            message,
+            CompletionOrder: completionOrder,
+            AppliedToState: appliedToState,
+            IgnoredReason: ignoredReason,
+            HighestSequenceAppliedToState: highestSequenceAppliedToState,
+            ConnectionState: connectionState);
+    }
+
+    private static WgbPollEvent WgbPoll(int milliseconds, string txRate, string rxRate)
+    {
+        return new WgbPollEvent(
+            WgbPollEventKind.PollSucceeded,
+            new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero).AddMilliseconds(milliseconds),
+            new WgbAssociationSnapshot(
+                "AP-221",
+                "0011.2233.4455",
+                "44",
+                "-56",
+                "1",
+                txRate,
+                rxRate,
+                WgbIp: "192.0.2.10",
+                AssociationStatus: "Associated",
+                CandidateApName: null,
+                CandidateBssid: null),
+            ParseResult: null,
+            RawOutput: null,
+            Message: null);
     }
 
     private sealed class FakeDiagnosticClock : IDiagnosticClock

@@ -3,7 +3,7 @@ param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
     [string]$Framework = "net8.0-windows10.0.19041",
-    [string]$Version = "0.1.2"
+    [string]$Version = ""
 )
 
 Set-StrictMode -Version Latest
@@ -13,6 +13,17 @@ $repoRoot = $PSScriptRoot
 $solutionPath = Join-Path $repoRoot "WgbDiagnostics.sln"
 $appProjectPath = Join-Path $repoRoot "src\WgbDiagnostics.App\WgbDiagnostics.App.csproj"
 $installerProjectPath = Join-Path $repoRoot "installer\WgbDiagnostics.Installer\WgbDiagnostics.Installer.wixproj"
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $propsPath = Join-Path $repoRoot "Directory.Build.props"
+    $versionNodes = @(Select-Xml -Path $propsPath -XPath "/Project/PropertyGroup/VersionPrefix")
+    if ($versionNodes.Count -eq 0 -or [string]::IsNullOrWhiteSpace($versionNodes[0].Node.InnerText)) {
+        throw "Could not resolve VersionPrefix from $propsPath"
+    }
+
+    $Version = $versionNodes[0].Node.InnerText.Trim()
+}
+
 $publishDir = Join-Path $repoRoot "artifacts\publish\WgbDiagnostics.App"
 $installerArtifactsDir = Join-Path $repoRoot "artifacts\installer"
 $installerIntermediateDir = Join-Path $repoRoot "installer\WgbDiagnostics.Installer\obj"

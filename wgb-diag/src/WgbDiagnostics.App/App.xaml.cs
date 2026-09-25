@@ -16,38 +16,52 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        DispatcherUnhandledException += StartupCrashLogger.LogDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += StartupCrashLogger.LogAppDomainUnhandledException;
         base.OnStartup(e);
 
-        _host = Host.CreateDefaultBuilder(e.Args)
-            .ConfigureAppConfiguration((_, configuration) =>
-            {
-                configuration.AddJsonFile(AppDataPaths.SettingsPath, optional: true, reloadOnChange: true);
-            })
-            .ConfigureServices((context, services) =>
-            {
-                services.Configure<WgbDiagnosticsOptions>(
-                    context.Configuration.GetSection(WgbDiagnosticsOptions.SectionName));
-                services.AddSingleton<IConfigurationValidator<WgbDiagnosticsOptions>, WgbDiagnosticsOptionsValidator>();
-                services.AddSingleton<ISettingsFileStore, JsonSettingsFileStore>();
-                services.AddSingleton<IDiagnosticClock, SystemDiagnosticClock>();
-                services.AddSingleton<IDiagnosticSessionLogger, DiagnosticSessionLogger>();
-                services.AddSingleton<IIcmpProbe, DotNetPingIcmpProbe>();
-                services.AddSingleton<IIcmpMonitor, IcmpMonitor>();
-                services.AddSingleton<IWgbCommandClient, SshNetWgbCommandClient>();
-                services.AddSingleton<IWgbAssociationParser, WgbAssociationParser>();
-                services.AddSingleton<IWgbPollingService, WgbPollingService>();
-                services.AddSingleton<MainWindow>();
-            })
-            .Build();
+        try
+        {
+            _host = Host.CreateDefaultBuilder(e.Args)
+                .ConfigureAppConfiguration((_, configuration) =>
+                {
+                    configuration.AddJsonFile(AppDataPaths.SettingsPath, optional: true, reloadOnChange: true);
+                })
+                .ConfigureServices((context, services) =>
+                {
+                    services.Configure<WgbDiagnosticsOptions>(
+                        context.Configuration.GetSection(WgbDiagnosticsOptions.SectionName));
+                    services.AddSingleton<IConfigurationValidator<WgbDiagnosticsOptions>, WgbDiagnosticsOptionsValidator>();
+                    services.AddSingleton<ISecretProtector, DpapiSecretProtector>();
+                    services.AddSingleton<ISettingsFileStore, JsonSettingsFileStore>();
+                    services.AddSingleton<IDiagnosticClock, SystemDiagnosticClock>();
+                    services.AddSingleton<IDiagnosticSessionLogger, DiagnosticSessionLogger>();
+                    services.AddSingleton<IIcmpProbe, DotNetPingIcmpProbe>();
+                    services.AddSingleton<IIcmpMonitor, IcmpMonitor>();
+                    services.AddSingleton<IWgbCommandClient, SshNetWgbCommandClient>();
+                    services.AddSingleton<IWgbAssociationParser, WgbAssociationParser>();
+                    services.AddSingleton<IWgbPollingService, WgbPollingService>();
+                    services.AddSingleton<MainWindow>();
+                })
+                .Build();
 
-        await _host.StartAsync();
+            await _host.StartAsync();
 
-        MainWindow = _host.Services.GetRequiredService<MainWindow>();
-        MainWindow.Show();
+            MainWindow = _host.Services.GetRequiredService<MainWindow>();
+            MainWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            StartupCrashLogger.Log("OnStartup", ex);
+            throw;
+        }
     }
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        DispatcherUnhandledException -= StartupCrashLogger.LogDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException -= StartupCrashLogger.LogAppDomainUnhandledException;
+
         if (_host is not null)
         {
             await _host.StopAsync(TimeSpan.FromSeconds(5));

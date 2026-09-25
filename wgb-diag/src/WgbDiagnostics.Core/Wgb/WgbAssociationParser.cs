@@ -15,6 +15,10 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
     private const string AssociationStatusField = "Association status";
     private const string CandidateApNameField = "Candidate AP name";
     private const string CandidateBssidField = "Candidate BSSID";
+    private const string ConnectedDurationField = "Connected duration";
+    private const string AuthTypeField = "Auth type";
+    private const string KeyManagementTypeField = "Key management type";
+    private const string TxRxRateField = "Current datarate (Tx/Rx)";
 
     private static readonly string[] AllFieldNames =
     [
@@ -28,11 +32,22 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
         WgbIpField,
         AssociationStatusField,
         CandidateApNameField,
-        CandidateBssidField
+        CandidateBssidField,
+        ConnectedDurationField,
+        AuthTypeField,
+        KeyManagementTypeField
     ];
 
+    private static readonly Regex AnsiEscapePattern = new(
+        @"\x1B\[[0-?]*[ -/]*[@-~]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex KeyValuePattern = new(
-        @"^\s*(?<key>[A-Za-z0-9 /_.-]+?)\s*(?::|=|\s{2,})\s*(?<value>.*?)\s*$",
+        @"^\s*(?<key>[A-Za-z0-9 ()/_.-]+?)\s*(?::|=|\s{2,})\s*(?<value>.*?)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TxRxRatePattern = new(
+        @"^(?<tx>[^/]+?)\s*/\s*(?<rx>.+?)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public WgbAssociationSnapshot Parse(string? rawOutput)
@@ -50,6 +65,7 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
                 normalizedProfile,
                 [],
                 AllFieldNames,
+                [],
                 []);
         }
 
@@ -64,18 +80,28 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
         string associationStatus = "Unknown";
         string? candidateApName = null;
         string? candidateBssid = null;
+        string? connectedDuration = null;
+        string? authType = null;
+        string? keyManagementType = null;
         var matchedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unclassifiedLines = new List<string>();
+        var warnings = new List<string>();
 
         foreach (var rawLine in rawOutput.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
-            var trimmedLine = rawLine.Trim();
+            var line = NormalizeLine(rawLine);
+            var trimmedLine = line.Trim();
             if (string.IsNullOrWhiteSpace(trimmedLine))
             {
                 continue;
             }
 
-            var match = KeyValuePattern.Match(rawLine);
+            if (IsPromptOrCommandEcho(trimmedLine))
+            {
+                continue;
+            }
+
+            var match = KeyValuePattern.Match(line);
             if (!match.Success)
             {
                 unclassifiedLines.Add(trimmedLine);
@@ -103,7 +129,9 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
                     channel = value;
                     break;
                 case RssiField:
-                    rssi = value;
+                    var rssiResult = WgbRssiNormalizer.NormalizeForParserProfile(value, normalizedProfile);
+                    rssi = rssiResult.Value;
+                    warnings.AddRange(rssiResult.Warnings);
                     break;
                 case RadioIdField:
                     radioId = value;
@@ -113,6 +141,9 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
                     break;
                 case RxRateField:
                     rxRate = value;
+                    break;
+                case TxRxRateField:
+                    SplitTxRxRate(value, out txRate, out rxRate);
                     break;
                 case WgbIpField:
                     wgbIp = value;
@@ -126,12 +157,29 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
                 case CandidateBssidField:
                     candidateBssid = value;
                     break;
+                case ConnectedDurationField:
+                    connectedDuration = value;
+                    break;
+                case AuthTypeField:
+                    authType = value;
+                    break;
+                case KeyManagementTypeField:
+                    keyManagementType = value;
+                    break;
                 default:
                     unclassifiedLines.Add(trimmedLine);
                     continue;
             }
 
-            matchedFields.Add(fieldName);
+            if (fieldName == TxRxRateField)
+            {
+                matchedFields.Add(TxRateField);
+                matchedFields.Add(RxRateField);
+            }
+            else
+            {
+                matchedFields.Add(fieldName);
+            }
         }
 
         var association = new WgbAssociationSnapshot(
@@ -145,14 +193,18 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
             wgbIp,
             associationStatus,
             candidateApName,
-            candidateBssid);
+            candidateBssid,
+            connectedDuration,
+            authType,
+            keyManagementType);
 
         return new WgbAssociationParseResult(
             association,
             normalizedProfile,
             matchedFields.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
             AllFieldNames.Except(matchedFields, StringComparer.OrdinalIgnoreCase).ToArray(),
-            unclassifiedLines);
+            unclassifiedLines,
+            warnings);
     }
 
     private static string NormalizeKey(string value)
@@ -166,6 +218,49 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
     private static string NormalizeValue(string value)
     {
         return Regex.Replace(value.Trim(), @"\s+", " ");
+    }
+
+    private static string NormalizeLine(string value)
+    {
+        var withoutAnsi = AnsiEscapePattern.Replace(value, "");
+        var chars = withoutAnsi
+            .Where(character => !char.IsControl(character))
+            .ToArray();
+        return new string(chars);
+    }
+
+    private static bool IsPromptOrCommandEcho(string line)
+    {
+        return line.Contains("show wgb dot11 associations", StringComparison.OrdinalIgnoreCase)
+            || Regex.IsMatch(line, @"^[\w().:/-]+[>#]$", RegexOptions.CultureInvariant);
+    }
+
+    private static void SplitTxRxRate(
+        string value,
+        out string? txRate,
+        out string? rxRate)
+    {
+        txRate = value;
+        rxRate = null;
+
+        var match = TxRxRatePattern.Match(value);
+        if (!match.Success)
+        {
+            return;
+        }
+
+        var tx = NormalizeRatePart(match.Groups["tx"].Value, value);
+        var rx = NormalizeRatePart(match.Groups["rx"].Value, value);
+        txRate = tx;
+        rxRate = rx;
+    }
+
+    private static string NormalizeRatePart(string value, string originalValue)
+    {
+        var suffixMatch = Regex.Match(originalValue, @"\b(?:Mbps|Mb/s)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var suffix = suffixMatch.Success ? $" {suffixMatch.Value}" : "";
+        var part = Regex.Replace(value.Trim(), @"\s*(?:mbps|mb/s)\s*$", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return NormalizeValue($"{part}{suffix}");
     }
 
     private static string? ResolveFieldName(string normalizedKey, string parserProfile)
@@ -185,7 +280,7 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
     {
         return normalizedKey switch
         {
-            "parentapname" or "parentap" or "apname" => ParentApNameField,
+            "parentapname" or "parentap" or "apname" or "ap" => ParentApNameField,
             "parentbssid" or "parentapbssid" or "bssid" => ParentBssidField,
             "channel" or "channelnumber" => ChannelField,
             "rssi" or "signalstrength" => RssiField,
@@ -196,6 +291,9 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
             "associationstatus" or "assocstatus" or "status" => AssociationStatusField,
             "candidateapname" or "candidateap" => CandidateApNameField,
             "candidatebssid" or "candidateapbssid" => CandidateBssidField,
+            "connectedduration" or "duration" => ConnectedDurationField,
+            "authtype" or "authenticationtype" => AuthTypeField,
+            "keymanagementtype" or "keymanagement" or "km" => KeyManagementTypeField,
             _ => null
         };
     }
@@ -205,10 +303,14 @@ public sealed class WgbAssociationParser : IWgbAssociationParser
         return normalizedKey switch
         {
             "parentapmacaddress" or "parentmacaddress" or "parentmac" => ParentBssidField,
+            "parentapmac" => ParentBssidField,
             "candidateapmacaddress" or "candidatemacaddress" or "candidatemac" => CandidateBssidField,
+            "candidateapmac" => CandidateBssidField,
             "currentparentap" or "currentap" => ParentApNameField,
             "currentchannel" => ChannelField,
-            "currentradioid" => RadioIdField,
+            "currentdataratetxrx" => TxRxRateField,
+            "uplinkradioid" or "currentradioid" => RadioIdField,
+            "uplinkstate" => AssociationStatusField,
             _ => null
         };
     }

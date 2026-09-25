@@ -104,6 +104,47 @@ public sealed class IcmpMonitorTests
         Assert.Equal(1L, sequences[1]);
     }
 
+    [Fact]
+    public async Task OlderTimeoutAfterNewerSuccessesIsIgnoredForState()
+    {
+        var probe = new FakeIcmpProbe();
+        var sink = new MonitorEventSink();
+
+        await using var run = StartMonitor(
+            probe,
+            sink,
+            intervalMilliseconds: 20,
+            timeoutMilliseconds: 1000,
+            lossThresholdMilliseconds: 60);
+
+        var first = await probe.WaitForCallAsync(sequenceNumber: 1);
+        var second = await probe.WaitForCallAsync(sequenceNumber: 2);
+        var third = await probe.WaitForCallAsync(sequenceNumber: 3);
+        var fourth = await probe.WaitForCallAsync(sequenceNumber: 4);
+        var fifth = await probe.WaitForCallAsync(sequenceNumber: 5);
+
+        second.CompleteSuccess(roundTripTimeMilliseconds: 7);
+        third.CompleteSuccess(roundTripTimeMilliseconds: 6);
+        fourth.CompleteSuccess(roundTripTimeMilliseconds: 8);
+        fifth.CompleteSuccess(roundTripTimeMilliseconds: 7);
+        await sink.WaitForEventCountAsync(IcmpMonitorEventKind.PingReply, expectedCount: 4);
+
+        first.CompleteTimeout();
+        await WaitUntilAsync(() => sink.Events.Any(monitorEvent =>
+            monitorEvent.SequenceNumber == 1
+            && monitorEvent.Kind == IcmpMonitorEventKind.PacketLoss
+            && !monitorEvent.AppliedToState));
+
+        Assert.DoesNotContain(sink.Events, monitorEvent => monitorEvent.Kind == IcmpMonitorEventKind.LossStarted);
+        Assert.DoesNotContain(sink.Events, monitorEvent => monitorEvent.Kind == IcmpMonitorEventKind.AlertThresholdReached);
+        Assert.DoesNotContain(sink.Events, monitorEvent => monitorEvent.Kind == IcmpMonitorEventKind.Recovered);
+
+        var lateTimeout = Assert.Single(sink.Events.Where(monitorEvent => monitorEvent.SequenceNumber == 1));
+        Assert.Equal(IcmpMonitorEventKind.PacketLoss, lateTimeout.Kind);
+        Assert.Equal("OutOfOrderTimeoutAfterNewerSuccess", lateTimeout.IgnoredReason);
+        Assert.True(lateTimeout.CompletionOrder > 4);
+    }
+
     private static MonitorRun StartMonitor(
         FakeIcmpProbe probe,
         MonitorEventSink sink,

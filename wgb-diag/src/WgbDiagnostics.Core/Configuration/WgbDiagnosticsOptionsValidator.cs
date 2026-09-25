@@ -1,3 +1,5 @@
+using WgbDiagnostics.Core.Realtime;
+
 namespace WgbDiagnostics.Core.Configuration;
 
 public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<WgbDiagnosticsOptions>
@@ -18,6 +20,10 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         AddRequiredTextError(errors, "SSH username", options.SshUsername);
         AddEnableCommandError(errors, options.UseEnableMode, options.EnableCommand);
         AddPositiveIntegerError(errors, "WGB poll interval", options.WgbPollIntervalSeconds, "seconds");
+        AddPositiveIntegerError(errors, "WGB reconnect initial", options.WgbReconnectInitialSeconds, "seconds");
+        AddPositiveIntegerError(errors, "WGB reconnect maximum", options.WgbReconnectMaximumSeconds, "seconds");
+        AddReconnectRangeError(errors, options.WgbReconnectInitialSeconds, options.WgbReconnectMaximumSeconds);
+        AddPositiveIntegerError(errors, "WGB stale threshold", options.WgbStaleAfterSeconds, "seconds");
         AddRequiredTextError(errors, "WGB command", options.WgbCommand);
         AddRequiredTextError(errors, "Parser profile", options.ParserProfile);
         AddRequiredTextError(errors, "Ping target", options.PingTarget);
@@ -27,6 +33,11 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         AddRequiredTextError(errors, "Log directory", options.LogDirectory);
         AddPositiveIntegerError(errors, "Retention days", options.RetentionDays, "days");
         AddPositiveIntegerError(errors, "Graph visible minutes", options.GraphVisibleMinutes, "minutes");
+        AddLiveDiagnosticsLayoutError(errors, options.LiveDiagnosticsLayout);
+        AddIcmpDisplayModeError(errors, options.IcmpDisplayMode);
+        AddWgbDisplayModeError(errors, options.WgbDisplayMode);
+        AddSplitterPositionError(errors, options.LiveDiagnosticsSplitterPosition);
+        AddBufferSizeError(errors, options.EventDisplayBufferSize);
         AddPositiveIntegerError(errors, "TFTP timeout", options.TftpTimeoutSeconds, "seconds");
         AddPositiveLongError(errors, "Maximum received file size", options.MaximumReceivedFileSizeBytes, "bytes");
 
@@ -112,6 +123,17 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         }
     }
 
+    private static void AddReconnectRangeError(
+        ICollection<ConfigurationValidationError> errors,
+        int initialSeconds,
+        int maximumSeconds)
+    {
+        if (initialSeconds > 0 && maximumSeconds > 0 && maximumSeconds < initialSeconds)
+        {
+            errors.Add(new ConfigurationValidationError("WGB reconnect maximum", "WGB reconnect maximum must be at least the initial reconnect delay."));
+        }
+    }
+
     private static void AddLossThresholdError(
         ICollection<ConfigurationValidationError> errors,
         int lossThresholdMilliseconds,
@@ -126,6 +148,56 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         if (lossThresholdMilliseconds < pingIntervalMilliseconds)
         {
             errors.Add(new ConfigurationValidationError("Loss threshold", "Loss threshold must be at least as large as the ping interval."));
+        }
+    }
+
+    private static void AddLiveDiagnosticsLayoutError(
+        ICollection<ConfigurationValidationError> errors,
+        string? value)
+    {
+        if (!Enum.TryParse<LiveDiagnosticsLayout>(value, ignoreCase: true, out _))
+        {
+            errors.Add(new ConfigurationValidationError("Live diagnostics layout", "Live diagnostics layout must be Auto, Horizontal, or Vertical."));
+        }
+    }
+
+    private static void AddIcmpDisplayModeError(
+        ICollection<ConfigurationValidationError> errors,
+        string? value)
+    {
+        if (!Enum.TryParse<LiveIcmpDisplayMode>(value, ignoreCase: true, out _))
+        {
+            errors.Add(new ConfigurationValidationError("ICMP display mode", "ICMP display mode must be AllPings, EventsOnly, or LossWindow."));
+        }
+    }
+
+    private static void AddWgbDisplayModeError(
+        ICollection<ConfigurationValidationError> errors,
+        string? value)
+    {
+        if (!Enum.TryParse<LiveWgbDisplayMode>(value, ignoreCase: true, out _))
+        {
+            errors.Add(new ConfigurationValidationError("WGB display mode", "WGB display mode must be AllSamples, ChangesOnly, or RoamsOnly."));
+        }
+    }
+
+    private static void AddSplitterPositionError(
+        ICollection<ConfigurationValidationError> errors,
+        double value)
+    {
+        if (double.IsNaN(value) || value is < 0.1 or > 0.9)
+        {
+            errors.Add(new ConfigurationValidationError("Live diagnostics splitter", "Live diagnostics splitter position must be between 0.1 and 0.9."));
+        }
+    }
+
+    private static void AddBufferSizeError(
+        ICollection<ConfigurationValidationError> errors,
+        int value)
+    {
+        if (value is < 500 or > 100000)
+        {
+            errors.Add(new ConfigurationValidationError("Event display buffer size", "Event display buffer size must be between 500 and 100000 rows."));
         }
     }
 }

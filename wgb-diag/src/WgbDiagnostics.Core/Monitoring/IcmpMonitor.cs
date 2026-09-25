@@ -18,7 +18,9 @@ public sealed class IcmpMonitor : IIcmpMonitor
         Func<IcmpMonitorEvent, ValueTask> onEvent,
         CancellationToken cancellationToken)
     {
-        var stateMachine = new IcmpMonitorStateMachine(options.LossThresholdMilliseconds);
+        var stateMachine = new IcmpMonitorStateMachine(
+            options.LossThresholdMilliseconds,
+            options.IntervalMilliseconds);
         var pendingProbes = new ConcurrentDictionary<long, Task>();
         var originTimestamp = Stopwatch.GetTimestamp();
         var sequenceNumber = 0L;

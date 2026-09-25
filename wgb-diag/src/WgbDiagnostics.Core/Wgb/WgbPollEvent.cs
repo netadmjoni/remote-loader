@@ -16,4 +16,6 @@ public sealed record WgbPollEvent(
     string? OldRadioId = null,
     string? NewRadioId = null,
     WgbRoamClassification RoamClassification = WgbRoamClassification.Unknown,
+    string? OldRssi = null,
+    string? NewRssi = null,
     string? PotentialBugMatchId = null);

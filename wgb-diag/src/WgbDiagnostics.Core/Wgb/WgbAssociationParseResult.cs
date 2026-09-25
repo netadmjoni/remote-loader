@@ -5,4 +5,5 @@ public sealed record WgbAssociationParseResult(
     string ParserProfile,
     IReadOnlyList<string> MatchedFields,
     IReadOnlyList<string> MissingFields,
-    IReadOnlyList<string> UnclassifiedLines);
+    IReadOnlyList<string> UnclassifiedLines,
+    IReadOnlyList<string> Warnings);

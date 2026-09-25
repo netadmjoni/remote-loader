@@ -7,4 +7,12 @@ public sealed record IcmpMonitorEvent(
     TimeSpan? RoundTripTime,
     int ConsecutiveLoss,
     int EstimatedLossWindowMilliseconds,
-    string? Message);
+    string? Message,
+    long StartedAtMilliseconds = 0,
+    long CompletedAtMilliseconds = 0,
+    long CompletionOrder = 0,
+    bool AppliedToState = true,
+    string? IgnoredReason = null,
+    long HighestSequenceAppliedToState = 0,
+    long HighestCompletedSequence = 0,
+    string ConnectionState = "Unknown");

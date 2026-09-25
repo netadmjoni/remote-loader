@@ -63,6 +63,20 @@ public sealed class DiagnosticsRealtimeModel
         lock (_sync)
         {
             NoteTimestamp(monitorEvent.Timestamp);
+            if (!monitorEvent.AppliedToState)
+            {
+                if (monitorEvent.Kind == IcmpMonitorEventKind.PacketLoss)
+                {
+                    _pingStatus = _pingStatus with
+                    {
+                        TotalLost = _pingStatus.TotalLost + 1
+                    };
+                }
+
+                TrimToWindow(GetTrimAnchor());
+                return;
+            }
+
             ApplyPingStatus(monitorEvent);
 
             switch (monitorEvent.Kind)
@@ -101,6 +115,8 @@ public sealed class DiagnosticsRealtimeModel
         {
             NoteTimestamp(pollEvent.Timestamp);
             var previousRssi = _wgbStatus.Rssi;
+            var previousTxRate = _wgbStatus.TxRate;
+            var previousRxRate = _wgbStatus.RxRate;
             ApplyWgbStatus(pollEvent);
 
             if (pollEvent.Association is not null
@@ -112,6 +128,7 @@ public sealed class DiagnosticsRealtimeModel
 
             if (pollEvent.Kind == WgbPollEventKind.ParentApChanged)
             {
+                var markerId = CreateRoamMarkerId(pollEvent);
                 InsertMarker(new RealtimeGraphMarker(
                     pollEvent.Timestamp,
                     RealtimeGraphMarkerKind.ParentApChanged,
@@ -124,7 +141,8 @@ public sealed class DiagnosticsRealtimeModel
                     pollEvent.NewChannel,
                     pollEvent.OldRadioId,
                     pollEvent.NewRadioId,
-                    pollEvent.RoamClassification));
+                    pollEvent.RoamClassification,
+                    markerId));
 
                 InsertRoamEvent(new RealtimeRoamEvent(
                     pollEvent.Timestamp,
@@ -137,7 +155,13 @@ public sealed class DiagnosticsRealtimeModel
                     pollEvent.OldRadioId,
                     pollEvent.NewRadioId,
                     pollEvent.RoamClassification,
-                    previousRssi));
+                    pollEvent.OldRssi ?? previousRssi,
+                    pollEvent.NewRssi ?? pollEvent.Association?.Rssi,
+                    previousTxRate,
+                    previousRxRate,
+                    pollEvent.Association?.TxRate,
+                    pollEvent.Association?.RxRate,
+                    markerId));
             }
 
             TrimToWindow(GetTrimAnchor());
@@ -157,13 +181,29 @@ public sealed class DiagnosticsRealtimeModel
                 runtime = TimeSpan.Zero;
             }
 
+            var wgbStatus = _wgbStatus;
+            if (wgbStatus.LastSuccessfulPollTimestamp is not null)
+            {
+                var age = now - wgbStatus.LastSuccessfulPollTimestamp.Value;
+                if (age < TimeSpan.Zero)
+                {
+                    age = TimeSpan.Zero;
+                }
+
+                wgbStatus = wgbStatus with
+                {
+                    DataAge = age,
+                    IsStale = age > _options.WgbStaleAfter
+                };
+            }
+
             return new DiagnosticsRealtimeSnapshot(
                 BuildSegments(),
                 BuildRssiPoints(),
                 _markers.ToArray(),
                 _roamEvents.ToArray(),
                 _pingStatus with { Runtime = runtime },
-                _wgbStatus,
+                wgbStatus,
                 _options);
         }
     }
@@ -246,11 +286,15 @@ public sealed class DiagnosticsRealtimeModel
             Status = pollEvent.Kind switch
             {
                 WgbPollEventKind.Connected => "Connected",
+                WgbPollEventKind.Connecting => "Connecting",
+                WgbPollEventKind.ReconnectScheduled => "Reconnecting",
                 WgbPollEventKind.Disconnected => "Disconnected",
                 WgbPollEventKind.PollSucceeded => "Poll succeeded",
                 WgbPollEventKind.PollFailed => "Poll failed",
                 WgbPollEventKind.AssociationUpdated => "Association updated",
                 WgbPollEventKind.ParentApChanged => $"Roam: {pollEvent.RoamClassification}",
+                WgbPollEventKind.SessionLost => "Session lost",
+                WgbPollEventKind.CommandWarning => "Warning",
                 _ => _wgbStatus.Status
             }
         };
@@ -263,10 +307,22 @@ public sealed class DiagnosticsRealtimeModel
                 ParentBssid = pollEvent.Association.ParentBssid,
                 Channel = pollEvent.Association.Channel,
                 RadioId = pollEvent.Association.RadioId,
-                Rssi = pollEvent.Association.Rssi,
+                Rssi = WgbRssiNormalizer.NormalizeForDisplay(pollEvent.Association.Rssi),
                 TxRate = pollEvent.Association.TxRate,
                 RxRate = pollEvent.Association.RxRate,
                 AssociationStatus = pollEvent.Association.AssociationStatus
+            };
+        }
+
+        if (pollEvent.Kind is WgbPollEventKind.PollSucceeded
+            or WgbPollEventKind.AssociationUpdated
+            or WgbPollEventKind.ParentApChanged)
+        {
+            status = status with
+            {
+                LastSuccessfulPollTimestamp = pollEvent.Timestamp,
+                DataAge = TimeSpan.Zero,
+                IsStale = false
             };
         }
 
@@ -288,13 +344,7 @@ public sealed class DiagnosticsRealtimeModel
             return false;
         }
 
-        var normalized = value
-            .Trim()
-            .Replace("dBm", "", StringComparison.OrdinalIgnoreCase)
-            .Trim();
-
-        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out rssi)
-            || double.TryParse(normalized, NumberStyles.Float, CultureInfo.CurrentCulture, out rssi);
+        return WgbRssiNormalizer.TryParseDbm(value, out rssi);
     }
 
     private void NoteTimestamp(DateTimeOffset timestamp)
@@ -375,6 +425,12 @@ public sealed class DiagnosticsRealtimeModel
         RealtimeRoamEvent left,
         RealtimeRoamEvent right)
     {
+        if (!string.IsNullOrWhiteSpace(left.MarkerId)
+            && left.MarkerId == right.MarkerId)
+        {
+            return true;
+        }
+
         return left.Timestamp == right.Timestamp
             && left.OldParentApName == right.OldParentApName
             && left.NewParentApName == right.NewParentApName
@@ -385,6 +441,13 @@ public sealed class DiagnosticsRealtimeModel
             && left.OldRadioId == right.OldRadioId
             && left.NewRadioId == right.NewRadioId
             && left.RoamClassification == right.RoamClassification;
+    }
+
+    private static string CreateRoamMarkerId(WgbPollEvent pollEvent)
+    {
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"roam:{pollEvent.Timestamp.UtcTicks}:{pollEvent.OldParentApName}:{pollEvent.NewParentApName}:{pollEvent.OldParentBssid}:{pollEvent.NewParentBssid}:{pollEvent.OldChannel}:{pollEvent.NewChannel}:{pollEvent.OldRadioId}:{pollEvent.NewRadioId}:{pollEvent.RoamClassification}");
     }
 
     private IReadOnlyList<RttGraphSegment> BuildSegments()
@@ -511,12 +574,14 @@ public sealed class DiagnosticsRealtimeModel
 public sealed record RealtimeGraphOptions(
     TimeSpan VisibleWindow,
     int MaxDataPoints,
-    int MaxMarkers)
+    int MaxMarkers,
+    TimeSpan WgbStaleAfter)
 {
     public static RealtimeGraphOptions Default { get; } = new(
-        TimeSpan.FromMinutes(60),
-        MaxDataPoints: 36_000,
-        MaxMarkers: 2_000);
+        TimeSpan.FromMinutes(10),
+        MaxDataPoints: 12_000,
+        MaxMarkers: 2_000,
+        WgbStaleAfter: TimeSpan.FromSeconds(5));
 
     public static RealtimeGraphOptions FromDiagnosticsOptions(WgbDiagnosticsOptions options)
     {
@@ -524,7 +589,8 @@ public sealed record RealtimeGraphOptions(
         return new RealtimeGraphOptions(
             TimeSpan.FromMinutes(minutes),
             MaxDataPoints: Math.Max(600, minutes * 60 * 20),
-            MaxMarkers: Math.Max(200, minutes * 20));
+            MaxMarkers: Math.Max(200, minutes * 20),
+            WgbStaleAfter: TimeSpan.FromSeconds(Math.Max(1, options.WgbStaleAfterSeconds)));
     }
 }
 
@@ -575,7 +641,10 @@ public sealed record WgbRealtimeStatus(
     string? TxRate,
     string? RxRate,
     string AssociationStatus,
-    string Status)
+    string Status,
+    DateTimeOffset? LastSuccessfulPollTimestamp,
+    TimeSpan DataAge,
+    bool IsStale)
 {
     public static WgbRealtimeStatus Empty { get; } = new(
         ParentApName: null,
@@ -586,7 +655,10 @@ public sealed record WgbRealtimeStatus(
         TxRate: null,
         RxRate: null,
         AssociationStatus: "Unknown",
-        Status: "Not tested");
+        Status: "Not tested",
+        LastSuccessfulPollTimestamp: null,
+        DataAge: TimeSpan.Zero,
+        IsStale: false);
 }
 
 public sealed record RealtimeGraphMarker(
@@ -601,7 +673,8 @@ public sealed record RealtimeGraphMarker(
     string? NewChannel = null,
     string? OldRadioId = null,
     string? NewRadioId = null,
-    WgbRoamClassification? RoamClassification = null);
+    WgbRoamClassification? RoamClassification = null,
+    string? MarkerId = null);
 
 public sealed record RealtimeRoamEvent(
     DateTimeOffset Timestamp,
@@ -614,7 +687,13 @@ public sealed record RealtimeRoamEvent(
     string? OldRadioId,
     string? NewRadioId,
     WgbRoamClassification RoamClassification,
-    string? OldRssi = null);
+    string? OldRssi = null,
+    string? NewRssi = null,
+    string? OldTxRate = null,
+    string? OldRxRate = null,
+    string? NewTxRate = null,
+    string? NewRxRate = null,
+    string? MarkerId = null);
 
 public enum RealtimeGraphMarkerKind
 {

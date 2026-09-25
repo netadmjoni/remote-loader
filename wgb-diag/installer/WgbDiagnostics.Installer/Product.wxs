@@ -10,6 +10,7 @@
     <SummaryInformation Manufacturer="IITN" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of WGB Diagnostics is already installed." />
     <MediaTemplate EmbedCab="yes" />
+    <SetProperty Id="REINSTALLMODE" Value="amus" Before="CostFinalize" Sequence="execute" />
     <Property Id="INSTALLDESKTOPSHORTCUT" Value="1" />
 
     <Feature Id="ProductFeature" Title="WGB Diagnostics" Level="1">
