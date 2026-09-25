@@ -11,7 +11,7 @@ The installer build publishes the WPF app as a .NET 8 self-contained `win-x64` a
 Expected artifact:
 
 ```text
-artifacts\installer\WgbDiagnostics-0.1.13-win-x64.msi
+artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi
 ```
 
 ## Installation
@@ -19,25 +19,25 @@ artifacts\installer\WgbDiagnostics-0.1.13-win-x64.msi
 Interactive installation:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.13-win-x64.msi
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi
 ```
 
 Silent installation with desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.13-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
 ```
 
 Silent installation without desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.13-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
 Silent uninstallation using the MSI:
 
 ```powershell
-msiexec /x artifacts\installer\WgbDiagnostics-0.1.13-win-x64.msi /qn /norestart
+msiexec /x artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi /qn /norestart
 ```
 
 ## Installed locations
@@ -75,7 +75,7 @@ If a newer probe has already succeeded before an older probe times out, WGB Diag
 
 Realtime graph interaction:
 
-1. Start ping monitoring and WGB polling.
+1. Press Start and confirm that both ping monitoring and WGB polling begin.
 2. Confirm the graph window starts at 10 minutes.
 3. Use the 1, 5, 10, 30, and 60 minute presets and confirm both RTT and RSSI X-axes change together.
 4. Zoom with the mouse wheel and pan by dragging either graph; confirm both graphs keep the same time window.

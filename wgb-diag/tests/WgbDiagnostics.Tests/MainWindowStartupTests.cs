@@ -113,10 +113,38 @@ public sealed class MainWindowStartupTests
             });
     }
 
+    [Fact]
+    public void DashboardStartAndStopControlBothMonitoringServices()
+    {
+        var monitoringServices = new TrackingMonitoringServices();
+
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            assertWindow: window =>
+            {
+                GetPrivateControl<Button>(window, "StartMonitoringButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                Assert.True(monitoringServices.IcmpStarted.Wait(TimeSpan.FromSeconds(5)), "ICMP monitoring did not start.");
+                Assert.True(monitoringServices.WgbStarted.Wait(TimeSpan.FromSeconds(5)), "WGB polling did not start.");
+
+                GetPrivateControl<Button>(window, "StopMonitoringButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                PumpDispatcherUntil(
+                    () => monitoringServices.IcmpStopped.IsSet && monitoringServices.WgbStopped.IsSet,
+                    TimeSpan.FromSeconds(5));
+            },
+            icmpMonitor: monitoringServices,
+            wgbPollingService: monitoringServices);
+    }
+
     private static void ConstructMainWindowOnSta(
         WgbDiagnosticsOptions options,
         ISecretProtector? secretProtector = null,
-        Action<MainWindow>? assertWindow = null)
+        Action<MainWindow>? assertWindow = null,
+        IIcmpMonitor? icmpMonitor = null,
+        IWgbPollingService? wgbPollingService = null)
     {
         Exception? exception = null;
         using var completed = new ManualResetEventSlim();
@@ -126,13 +154,15 @@ public sealed class MainWindowStartupTests
             MainWindow? window = null;
             try
             {
+                SynchronizationContext.SetSynchronizationContext(
+                    new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
                 window = new MainWindow(
                     new FakeSettingsFileStore(options),
                     new WgbDiagnosticsOptionsValidator(),
-                    new FakeIcmpMonitor(),
+                    icmpMonitor ?? new FakeIcmpMonitor(),
                     new FakeWgbCommandClient(),
                     new WgbAssociationParser(),
-                    new FakeWgbPollingService(),
+                    wgbPollingService ?? new FakeWgbPollingService(),
                     new FakeDiagnosticSessionLogger(),
                     secretProtector ?? new FakeSecretProtector());
 
@@ -159,6 +189,22 @@ public sealed class MainWindowStartupTests
         {
             ExceptionDispatchInfo.Capture(exception).Throw();
         }
+    }
+
+    private static void PumpDispatcherUntil(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            var frame = new DispatcherFrame();
+            Dispatcher.CurrentDispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+            Thread.Sleep(10);
+        }
+
+        Assert.True(condition(), "Monitoring services did not stop before the timeout.");
     }
 
     private static T GetPrivateControl<T>(MainWindow window, string name)
@@ -224,6 +270,49 @@ public sealed class MainWindowStartupTests
             CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class TrackingMonitoringServices : IIcmpMonitor, IWgbPollingService
+    {
+        public ManualResetEventSlim IcmpStarted { get; } = new();
+
+        public ManualResetEventSlim IcmpStopped { get; } = new();
+
+        public ManualResetEventSlim WgbStarted { get; } = new();
+
+        public ManualResetEventSlim WgbStopped { get; } = new();
+
+        public Task RunAsync(
+            IcmpMonitorOptions options,
+            Func<IcmpMonitorEvent, ValueTask> onEvent,
+            CancellationToken cancellationToken)
+        {
+            IcmpStarted.Set();
+            return WaitForCancellationAsync(cancellationToken, IcmpStopped);
+        }
+
+        public Task RunAsync(
+            WgbPollingOptions options,
+            Func<WgbPollEvent, ValueTask> onEvent,
+            CancellationToken cancellationToken)
+        {
+            WgbStarted.Set();
+            return WaitForCancellationAsync(cancellationToken, WgbStopped);
+        }
+
+        private static async Task WaitForCancellationAsync(
+            CancellationToken cancellationToken,
+            ManualResetEventSlim stopped)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                stopped.Set();
+            }
         }
     }
 

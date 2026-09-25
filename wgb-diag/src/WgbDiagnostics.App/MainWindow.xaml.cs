@@ -182,10 +182,17 @@ public partial class MainWindow : Window
             CancellationToken.None,
             TaskContinuationOptions.None,
             TaskScheduler.Default);
+
+        StartWgbPolling(WgbPollingOptions.FromDiagnosticsOptions(
+            diagnosticsOptions,
+            SshPasswordBox.Password,
+            EnablePasswordBox.Password));
     }
 
     private async void StopMonitoringButton_Click(object sender, RoutedEventArgs e)
     {
+        StopMonitoringButton.IsEnabled = false;
+        await StopWgbPollingAsync();
         await StopMonitoringAsync();
     }
 
@@ -263,6 +270,16 @@ public partial class MainWindow : Window
 
         var options = ReadWgbPollingOptionsFromForm();
         if (options is null)
+        {
+            return;
+        }
+
+        StartWgbPolling(options);
+    }
+
+    private void StartWgbPolling(WgbPollingOptions options)
+    {
+        if (_wgbPollingTask is { IsCompleted: false })
         {
             return;
         }
