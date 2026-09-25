@@ -30,7 +30,7 @@ public sealed class MainWindowStartupTests
                 var version = GetPrivateControl<TextBlock>(window, "VersionTextBlock");
                 Assert.Contains("v", version.Text);
                 var dashboardStatus = GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock");
-                Assert.Equal("STOPPED", dashboardStatus.Text);
+                Assert.Equal("ICMP NOT CONFIGURED", dashboardStatus.Text);
                 var dashboardAdvanced = GetPrivateControl<Expander>(window, "DashboardAdvancedExpander");
                 Assert.False(dashboardAdvanced.IsExpanded);
                 var selectedRoam = GetPrivateControl<Expander>(window, "SelectedRoamExpander");
@@ -117,9 +117,11 @@ public sealed class MainWindowStartupTests
     public void DashboardStartAndStopControlBothMonitoringServices()
     {
         var monitoringServices = new TrackingMonitoringServices();
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.PingTarget = "10.194.240.10";
 
         ConstructMainWindowOnSta(
-            WgbDiagnosticsOptions.CreateDefault(),
+            options,
             assertWindow: window =>
             {
                 GetPrivateControl<Button>(window, "StartMonitoringButton").RaiseEvent(
@@ -133,6 +135,35 @@ public sealed class MainWindowStartupTests
 
                 PumpDispatcherUntil(
                     () => monitoringServices.IcmpStopped.IsSet && monitoringServices.WgbStopped.IsSet,
+                    TimeSpan.FromSeconds(5));
+            },
+            icmpMonitor: monitoringServices,
+            wgbPollingService: monitoringServices);
+    }
+
+    [Fact]
+    public void DashboardStartWithoutPingTargetStartsOnlyWgbPolling()
+    {
+        var monitoringServices = new TrackingMonitoringServices();
+
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            assertWindow: window =>
+            {
+                GetPrivateControl<Button>(window, "StartMonitoringButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                Assert.True(monitoringServices.WgbStarted.Wait(TimeSpan.FromSeconds(5)), "WGB polling did not start.");
+                Assert.False(monitoringServices.IcmpStarted.Wait(TimeSpan.FromMilliseconds(250)), "ICMP monitoring started without a target.");
+                Assert.Equal(
+                    "ICMP NOT CONFIGURED",
+                    GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
+
+                GetPrivateControl<Button>(window, "StopMonitoringButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                PumpDispatcherUntil(
+                    () => monitoringServices.WgbStopped.IsSet,
                     TimeSpan.FromSeconds(5));
             },
             icmpMonitor: monitoringServices,

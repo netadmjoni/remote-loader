@@ -36,7 +36,7 @@ public sealed class WgbDiagnosticsOptions
 
     public string ParserProfile { get; set; } = "iw9167-wgb-v1";
 
-    public string PingTarget { get; set; } = "8.8.8.8";
+    public string PingTarget { get; set; } = "";
 
     public int PingIntervalMilliseconds { get; set; } = 100;
 

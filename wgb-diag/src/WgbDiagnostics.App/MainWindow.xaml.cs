@@ -165,23 +165,31 @@ public partial class MainWindow : Window
         ProbeEventsListBox.Items.Clear();
         _pingEventView.Reset();
 
-        var monitorOptions = IcmpMonitorOptions.FromDiagnosticsOptions(diagnosticsOptions);
-        _monitoringCancellation = new CancellationTokenSource();
         StartMonitoringButton.IsEnabled = false;
         StopMonitoringButton.IsEnabled = true;
-        MonitorStatusTextBlock.Text = "Starting";
+        if (!string.IsNullOrWhiteSpace(diagnosticsOptions.PingTarget))
+        {
+            var monitorOptions = IcmpMonitorOptions.FromDiagnosticsOptions(diagnosticsOptions);
+            _monitoringCancellation = new CancellationTokenSource();
+            MonitorStatusTextBlock.Text = "Starting";
 
-        _monitoringTask = Task.Run(
-            () => _icmpMonitor.RunAsync(
-                monitorOptions,
-                HandleMonitorEventAsync,
-                _monitoringCancellation.Token));
+            _monitoringTask = Task.Run(
+                () => _icmpMonitor.RunAsync(
+                    monitorOptions,
+                    HandleMonitorEventAsync,
+                    _monitoringCancellation.Token));
 
-        _ = _monitoringTask.ContinueWith(
-            task => Dispatcher.Invoke(() => CompleteMonitoring(task)),
-            CancellationToken.None,
-            TaskContinuationOptions.None,
-            TaskScheduler.Default);
+            _ = _monitoringTask.ContinueWith(
+                task => Dispatcher.Invoke(() => CompleteMonitoring(task)),
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
+        }
+        else
+        {
+            MonitorStatusTextBlock.Text = "Not configured";
+            LiveIcmpStateTextBlock.Text = "Not configured";
+        }
 
         StartWgbPolling(WgbPollingOptions.FromDiagnosticsOptions(
             diagnosticsOptions,
@@ -1079,6 +1087,7 @@ public partial class MainWindow : Window
         UpdateIcmpTimingText(options);
         ApplyGraphOptionsFromSettings(options, resetToAutoscroll: _graphViewport.State == GraphViewportState.Autoscroll);
         ApplyLiveDiagnosticsOptions(options);
+        RefreshIcmpConfigurationState();
         return credentialErrors;
     }
 
@@ -1367,7 +1376,7 @@ public partial class MainWindow : Window
         {
             StartMonitoringButton.IsEnabled = true;
             StopMonitoringButton.IsEnabled = false;
-            MonitorStatusTextBlock.Text = "Stopped";
+            MonitorStatusTextBlock.Text = GetIdleIcmpStatus();
             await StopDiagnosticSessionIfIdleAsync();
             return;
         }
@@ -1394,7 +1403,7 @@ public partial class MainWindow : Window
 
             StartMonitoringButton.IsEnabled = true;
             StopMonitoringButton.IsEnabled = false;
-            MonitorStatusTextBlock.Text = "Stopped";
+            MonitorStatusTextBlock.Text = GetIdleIcmpStatus();
             await StopDiagnosticSessionIfIdleAsync();
         }
     }
@@ -1584,6 +1593,11 @@ public partial class MainWindow : Window
             StopWgbPollingButton.IsEnabled = false;
             TestSshButton.IsEnabled = true;
             WgbStatusTextBlock.Text = "Polling stopped";
+            if (_monitoringTask is not { IsCompleted: false })
+            {
+                StartMonitoringButton.IsEnabled = true;
+                StopMonitoringButton.IsEnabled = false;
+            }
             await StopDiagnosticSessionIfIdleAsync();
         }
     }
@@ -1600,6 +1614,11 @@ public partial class MainWindow : Window
         StartWgbPollingButton.IsEnabled = true;
         StopWgbPollingButton.IsEnabled = false;
         TestSshButton.IsEnabled = true;
+        if (_monitoringTask is not { IsCompleted: false })
+        {
+            StartMonitoringButton.IsEnabled = true;
+            StopMonitoringButton.IsEnabled = false;
+        }
 
         if (task.IsFaulted)
         {
@@ -1703,6 +1722,25 @@ public partial class MainWindow : Window
     {
         return _monitoringTask is { IsCompleted: false }
             || _wgbPollingTask is { IsCompleted: false };
+    }
+
+    private string GetIdleIcmpStatus()
+    {
+        return string.IsNullOrWhiteSpace(PingTargetTextBox.Text) ? "Not configured" : "Stopped";
+    }
+
+    private void RefreshIcmpConfigurationState()
+    {
+        if (_monitoringTask is not { IsCompleted: false })
+        {
+            MonitorStatusTextBlock.Text = GetIdleIcmpStatus();
+        }
+
+        var snapshot = _latestRealtimeSnapshot ?? _realtimeModel.Snapshot(DateTimeOffset.UtcNow);
+        LiveIcmpStateTextBlock.Text = string.IsNullOrWhiteSpace(PingTargetTextBox.Text)
+            ? "Not configured"
+            : snapshot.PingStatus.Status;
+        ApplyDashboardSummary(snapshot);
     }
 
     private void InitializeRttPlot()
@@ -2254,7 +2292,9 @@ public partial class MainWindow : Window
         CompactWgbRatesTextBlock.Text = $"Tx {compact.TxRate}, Rx {compact.RxRate}, {compact.AssociationStatus}";
 
         var latestRoam = snapshot.RoamEvents.LastOrDefault();
-        LiveIcmpStateTextBlock.Text = snapshot.PingStatus.Status;
+        LiveIcmpStateTextBlock.Text = string.IsNullOrWhiteSpace(PingTargetTextBox.Text)
+            ? "Not configured"
+            : snapshot.PingStatus.Status;
         LiveWgbStateTextBlock.Text = FormatDashboardWgbStatus(snapshot.WgbStatus);
         LiveLatestRoamTextBlock.Text = latestRoam is null
             ? "-"
@@ -2280,6 +2320,7 @@ public partial class MainWindow : Window
         var dashboardState = DetermineDashboardStatus(pingStatus, lossThresholdMilliseconds);
         DashboardStatusTextBlock.Text = dashboardState switch
         {
+            "ICMP_NOT_CONFIGURED" => "ICMP NOT CONFIGURED",
             "DEGRADED" => "WARNING",
             "OUTAGE" => "LOSS",
             _ => dashboardState
@@ -2317,11 +2358,13 @@ public partial class MainWindow : Window
         DashboardStatusSymbolTextBlock.Foreground = statusForeground;
         DashboardInterruptionTextBlock.Foreground = statusForeground;
 
-        DashboardInterruptionTextBlock.Text = dashboardState == "STOPPED"
-            ? "Monitoring is not running"
-            : pingStatus.ConsecutiveLoss > 0
-                ? $"NETWORK INTERRUPTION - {FormatDuration(pingStatus.CurrentLossWindow)}"
-                : "No active interruption";
+        DashboardInterruptionTextBlock.Text = dashboardState switch
+        {
+            "ICMP_NOT_CONFIGURED" => "ICMP target is not configured",
+            "STOPPED" => "Monitoring is not running",
+            _ when pingStatus.ConsecutiveLoss > 0 => $"NETWORK INTERRUPTION - {FormatDuration(pingStatus.CurrentLossWindow)}",
+            _ => "No active interruption"
+        };
 
         var latestMarker = snapshot.Markers.LastOrDefault();
         DashboardLatestEventTextBlock.Text = latestMarker is null
@@ -2357,6 +2400,11 @@ public partial class MainWindow : Window
         PingRealtimeStatus pingStatus,
         int lossThresholdMilliseconds)
     {
+        if (string.IsNullOrWhiteSpace(PingTargetTextBox.Text))
+        {
+            return "ICMP_NOT_CONFIGURED";
+        }
+
         if (pingStatus.Status.Equals("Stopped", StringComparison.OrdinalIgnoreCase)
             && pingStatus.TotalOk == 0
             && pingStatus.TotalLost == 0)

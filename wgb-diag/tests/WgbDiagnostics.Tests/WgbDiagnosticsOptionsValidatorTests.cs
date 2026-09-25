@@ -27,6 +27,7 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         Assert.Equal(2, options.WgbReconnectInitialSeconds);
         Assert.Equal(60, options.WgbReconnectMaximumSeconds);
         Assert.Equal(5, options.WgbStaleAfterSeconds);
+        Assert.Empty(options.PingTarget);
         Assert.Equal(100, options.PingIntervalMilliseconds);
         Assert.Equal(1000, options.PingTimeoutMilliseconds);
         Assert.Equal(600, options.LossThresholdMilliseconds);
@@ -71,7 +72,7 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         Assert.Contains("SSH username", fields);
         Assert.Contains("WGB command", fields);
         Assert.Contains("Parser profile", fields);
-        Assert.Contains("Ping target", fields);
+        Assert.DoesNotContain("Ping target", fields);
         Assert.Contains("Log directory", fields);
     }
 

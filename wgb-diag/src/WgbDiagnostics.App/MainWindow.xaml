@@ -144,13 +144,13 @@
                              MinWidth="34"
                              VerticalAlignment="Center" />
                   <TextBlock x:Name="DashboardStatusTextBlock"
-                             Text="STOPPED"
+                              Text="ICMP NOT CONFIGURED"
                              FontSize="28"
                              FontWeight="Bold"
                              TextWrapping="Wrap" />
                 </StackPanel>
                 <TextBlock x:Name="DashboardInterruptionTextBlock"
-                           Text="Monitoring is not running"
+                            Text="ICMP target is not configured"
                            FontSize="12"
                            FontWeight="SemiBold"
                            TextWrapping="Wrap" />
@@ -251,7 +251,7 @@
                 <UniformGrid Columns="6" Margin="0,0,0,6">
                   <StackPanel Margin="0,0,12,0">
                     <TextBlock Text="ICMP state" Style="{StaticResource MetricLabelStyle}" />
-                    <TextBlock x:Name="MonitorStatusTextBlock" Text="Stopped" FontWeight="SemiBold" />
+                    <TextBlock x:Name="MonitorStatusTextBlock" Text="Not configured" FontWeight="SemiBold" />
                   </StackPanel>
                   <StackPanel Margin="0,0,12,0">
                     <TextBlock Text="OK probes" Style="{StaticResource MetricLabelStyle}" />

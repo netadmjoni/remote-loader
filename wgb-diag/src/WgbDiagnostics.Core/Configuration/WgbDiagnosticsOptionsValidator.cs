@@ -26,7 +26,10 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         AddPositiveIntegerError(errors, "WGB stale threshold", options.WgbStaleAfterSeconds, "seconds");
         AddRequiredTextError(errors, "WGB command", options.WgbCommand);
         AddRequiredTextError(errors, "Parser profile", options.ParserProfile);
-        AddRequiredTextError(errors, "Ping target", options.PingTarget);
+        if (!string.IsNullOrWhiteSpace(options.PingTarget))
+        {
+            AddRequiredTextError(errors, "Ping target", options.PingTarget);
+        }
         AddPingIntervalError(errors, options.PingIntervalMilliseconds);
         AddPositiveIntegerError(errors, "Ping timeout", options.PingTimeoutMilliseconds, "milliseconds");
         AddLossThresholdError(errors, options.LossThresholdMilliseconds, options.PingIntervalMilliseconds);
