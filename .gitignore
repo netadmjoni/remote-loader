@@ -1,3 +1,5 @@
 ping-script/.logs/
 wgb-script/.logs/
 ping-script/old_loss_monitor.sh
+__pycache__/
+*.py[cod]
