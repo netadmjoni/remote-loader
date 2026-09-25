@@ -3,6 +3,10 @@
 `wgbtrace` is a conservative offline parser for event logs captured from Cisco
 C9167 WGB devices. It does not connect to or change the WGB.
 
+It is part of the engineering and Cisco TAC layer. The primary operator product
+is the Windows connectivity monitor under [`wgb-diag`](../wgb-diag/); raw Cisco
+events should not clutter that application's default operator view.
+
 Version: `0.1.0`
 
 The first version recognizes a deliberately small event set and keeps every
