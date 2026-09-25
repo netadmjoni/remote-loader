@@ -27,8 +27,14 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
         {
             var json = File.ReadAllText(SettingsPath);
             var document = JsonSerializer.Deserialize<SettingsDocument>(json, SerializerOptions);
+            var options = document?.WgbDiagnostics ?? WgbDiagnosticsOptions.CreateDefault();
+            if (WgbDiagnosticsOptionsMigration.Apply(options))
+            {
+                Save(options);
+            }
+
             return new SettingsLoadResult(
-                document?.WgbDiagnostics ?? WgbDiagnosticsOptions.CreateDefault(),
+                options,
                 []);
         }
         catch (JsonException ex)

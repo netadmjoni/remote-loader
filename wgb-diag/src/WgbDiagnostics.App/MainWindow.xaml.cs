@@ -140,6 +140,13 @@ public partial class MainWindow : Window
 
         var diagnosticsOptions = ReadSettingsFromForm(out var formErrors);
         var errors = formErrors.Concat(_validator.Validate(diagnosticsOptions)).ToList();
+        if (string.IsNullOrWhiteSpace(diagnosticsOptions.PingTarget))
+        {
+            errors.Insert(0, new ConfigurationValidationError(
+                "Ping target",
+                "Ping target not configured. Configure a target in Settings before starting monitoring."));
+        }
+
         if (errors.Count > 0)
         {
             ShowErrors(errors);
@@ -165,31 +172,23 @@ public partial class MainWindow : Window
         ProbeEventsListBox.Items.Clear();
         _pingEventView.Reset();
 
+        var monitorOptions = IcmpMonitorOptions.FromDiagnosticsOptions(diagnosticsOptions);
+        _monitoringCancellation = new CancellationTokenSource();
         StartMonitoringButton.IsEnabled = false;
         StopMonitoringButton.IsEnabled = true;
-        if (!string.IsNullOrWhiteSpace(diagnosticsOptions.PingTarget))
-        {
-            var monitorOptions = IcmpMonitorOptions.FromDiagnosticsOptions(diagnosticsOptions);
-            _monitoringCancellation = new CancellationTokenSource();
-            MonitorStatusTextBlock.Text = "Starting";
+        MonitorStatusTextBlock.Text = "Starting";
 
-            _monitoringTask = Task.Run(
-                () => _icmpMonitor.RunAsync(
-                    monitorOptions,
-                    HandleMonitorEventAsync,
-                    _monitoringCancellation.Token));
+        _monitoringTask = Task.Run(
+            () => _icmpMonitor.RunAsync(
+                monitorOptions,
+                HandleMonitorEventAsync,
+                _monitoringCancellation.Token));
 
-            _ = _monitoringTask.ContinueWith(
-                task => Dispatcher.Invoke(() => CompleteMonitoring(task)),
-                CancellationToken.None,
-                TaskContinuationOptions.None,
-                TaskScheduler.Default);
-        }
-        else
-        {
-            MonitorStatusTextBlock.Text = "Not configured";
-            LiveIcmpStateTextBlock.Text = "Not configured";
-        }
+        _ = _monitoringTask.ContinueWith(
+            task => Dispatcher.Invoke(() => CompleteMonitoring(task)),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
 
         StartWgbPolling(WgbPollingOptions.FromDiagnosticsOptions(
             diagnosticsOptions,
@@ -1593,11 +1592,6 @@ public partial class MainWindow : Window
             StopWgbPollingButton.IsEnabled = false;
             TestSshButton.IsEnabled = true;
             WgbStatusTextBlock.Text = "Polling stopped";
-            if (_monitoringTask is not { IsCompleted: false })
-            {
-                StartMonitoringButton.IsEnabled = true;
-                StopMonitoringButton.IsEnabled = false;
-            }
             await StopDiagnosticSessionIfIdleAsync();
         }
     }
@@ -1614,11 +1608,6 @@ public partial class MainWindow : Window
         StartWgbPollingButton.IsEnabled = true;
         StopWgbPollingButton.IsEnabled = false;
         TestSshButton.IsEnabled = true;
-        if (_monitoringTask is not { IsCompleted: false })
-        {
-            StartMonitoringButton.IsEnabled = true;
-            StopMonitoringButton.IsEnabled = false;
-        }
 
         if (task.IsFaulted)
         {

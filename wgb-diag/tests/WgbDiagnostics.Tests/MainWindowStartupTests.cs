@@ -142,7 +142,7 @@ public sealed class MainWindowStartupTests
     }
 
     [Fact]
-    public void DashboardStartWithoutPingTargetStartsOnlyWgbPolling()
+    public void DashboardStartWithoutPingTargetStartsNothingAndShowsError()
     {
         var monitoringServices = new TrackingMonitoringServices();
 
@@ -153,18 +153,17 @@ public sealed class MainWindowStartupTests
                 GetPrivateControl<Button>(window, "StartMonitoringButton").RaiseEvent(
                     new System.Windows.RoutedEventArgs(Button.ClickEvent));
 
-                Assert.True(monitoringServices.WgbStarted.Wait(TimeSpan.FromSeconds(5)), "WGB polling did not start.");
                 Assert.False(monitoringServices.IcmpStarted.Wait(TimeSpan.FromMilliseconds(250)), "ICMP monitoring started without a target.");
+                Assert.False(monitoringServices.WgbStarted.Wait(TimeSpan.FromMilliseconds(250)), "WGB polling started without a ping target.");
                 Assert.Equal(
                     "ICMP NOT CONFIGURED",
                     GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
-
-                GetPrivateControl<Button>(window, "StopMonitoringButton").RaiseEvent(
-                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
-
-                PumpDispatcherUntil(
-                    () => monitoringServices.WgbStopped.IsSet,
-                    TimeSpan.FromSeconds(5));
+                var errors = GetPrivateControl<ListBox>(window, "ValidationErrorsListBox");
+                Assert.Contains(
+                    errors.Items.Cast<string>(),
+                    error => error.Contains("Ping target not configured", StringComparison.Ordinal));
+                Assert.True(GetPrivateControl<Button>(window, "StartMonitoringButton").IsEnabled);
+                Assert.False(GetPrivateControl<Button>(window, "StopMonitoringButton").IsEnabled);
             },
             icmpMonitor: monitoringServices,
             wgbPollingService: monitoringServices);
