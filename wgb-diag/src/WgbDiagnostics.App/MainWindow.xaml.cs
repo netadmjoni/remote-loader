@@ -1459,6 +1459,9 @@ public partial class MainWindow : Window
                 WgbStatusTextBlock.Text = "Disconnected";
                 break;
             case WgbPollEventKind.PromptDetected:
+            case WgbPollEventKind.SshConnectStart:
+            case WgbPollEventKind.SshAuthenticationSucceeded:
+            case WgbPollEventKind.SshSessionReused:
             case WgbPollEventKind.EnableSucceeded:
             case WgbPollEventKind.CommandStarted:
             case WgbPollEventKind.CommandOutputReceived:
@@ -1471,6 +1474,7 @@ public partial class MainWindow : Window
                 WgbStatusTextBlock.Text = $"Warning: {pollEvent.Message}";
                 break;
             case WgbPollEventKind.PromptResyncFailed:
+            case WgbPollEventKind.SshConnectFailed:
             case WgbPollEventKind.SessionLost:
                 WgbStatusTextBlock.Text = $"{pollEvent.Kind}: {pollEvent.Message}";
                 break;
@@ -2523,7 +2527,12 @@ public partial class MainWindow : Window
             parts.Add($"Warning: {diagnostics.Warning}");
         }
 
-        return string.Join(" | ", parts);
+        var events = diagnostics.Events
+            .Select(item => item.Message)
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .ToArray();
+        var summary = string.Join(" | ", parts);
+        return events.Length == 0 ? summary : summary + Environment.NewLine + string.Join(Environment.NewLine, events);
     }
 
     private static string FormatStep(bool succeeded)

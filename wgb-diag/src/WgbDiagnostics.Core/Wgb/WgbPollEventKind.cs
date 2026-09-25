@@ -4,6 +4,10 @@ public enum WgbPollEventKind
 {
     Connecting,
     Connected,
+    SshConnectStart,
+    SshAuthenticationSucceeded,
+    SshSessionReused,
+    SshConnectFailed,
     PromptDetected,
     EnableSucceeded,
     CommandStarted,

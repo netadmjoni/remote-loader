@@ -11,7 +11,7 @@ The installer build publishes the WPF app as a .NET 8 self-contained `win-x64` a
 Expected artifact:
 
 ```text
-artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi
+artifacts\installer\WgbDiagnostics-0.1.15-win-x64.msi
 ```
 
 ## Installation
@@ -19,25 +19,25 @@ artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi
 Interactive installation:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.15-win-x64.msi
 ```
 
 Silent installation with desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.15-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
 ```
 
 Silent installation without desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.15-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
 Silent uninstallation using the MSI:
 
 ```powershell
-msiexec /x artifacts\installer\WgbDiagnostics-0.1.14-win-x64.msi /qn /norestart
+msiexec /x artifacts\installer\WgbDiagnostics-0.1.15-win-x64.msi /qn /norestart
 ```
 
 ## Installed locations

@@ -133,6 +133,9 @@ public sealed class SshNetWgbCommandClient : IWgbCommandClient, IWgbPersistentCo
             && _persistentSession.Key == key
             && _persistentSession.Session.IsConnected)
         {
+            state.ConnectionSucceeded = true;
+            state.EnableSucceeded = !request.UseEnableMode || _persistentSession.Prompt.EndsWith("#", StringComparison.Ordinal);
+            state.Record(WgbPollEventKind.SshSessionReused, $"SSH_SESSION_REUSED host={request.Address} port={request.Port}");
             return _persistentSession;
         }
 
@@ -147,8 +150,26 @@ public sealed class SshNetWgbCommandClient : IWgbCommandClient, IWgbPersistentCo
             try
             {
                 session = _sessionFactory.Create(request);
-                session.Connect(cancellationToken);
+                var timeoutMilliseconds = Math.Max(1, request.TimeoutMilliseconds);
+                state.Record(
+                    WgbPollEventKind.SshConnectStart,
+                    $"SSH_CONNECT_START host={request.Address} port={request.Port} user={request.Username} auth=password timeout_ms={timeoutMilliseconds}");
+                try
+                {
+                    session.Connect(cancellationToken);
+                }
+                catch (SshOperationTimeoutException ex)
+                {
+                    var stage = ex.Message.Contains("Connection failed to establish within", StringComparison.OrdinalIgnoreCase)
+                        ? "TCP_CONNECT"
+                        : "SSH_CONNECT";
+                    var message = $"SSH_CONNECT_FAILED stage={stage} host={request.Address} port={request.Port} timeout_ms={timeoutMilliseconds}";
+                    state.Record(WgbPollEventKind.SshConnectFailed, message);
+                    throw CreateFailure(state, $"{message}: {ex.Message}", ex);
+                }
+
                 state.ConnectionSucceeded = true;
+                state.Record(WgbPollEventKind.SshAuthenticationSucceeded, "SSH_AUTH_OK");
 
                 shell = session.CreateShell(shellOptions, cancellationToken);
                 var initialRead = ReadUntilPrompt(shell, expectedPrompt: null, timeout, cancellationToken);

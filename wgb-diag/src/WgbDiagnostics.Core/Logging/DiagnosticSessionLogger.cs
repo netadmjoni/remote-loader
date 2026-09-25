@@ -388,6 +388,10 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
         {
             return kind is WgbPollEventKind.Connecting
                 or WgbPollEventKind.Connected
+                or WgbPollEventKind.SshConnectStart
+                or WgbPollEventKind.SshAuthenticationSucceeded
+                or WgbPollEventKind.SshSessionReused
+                or WgbPollEventKind.SshConnectFailed
                 or WgbPollEventKind.PromptDetected
                 or WgbPollEventKind.EnableSucceeded
                 or WgbPollEventKind.CommandStarted

@@ -1,3 +1,4 @@
+using Renci.SshNet.Common;
 using WgbDiagnostics.Core.Wgb;
 using Xunit;
 
@@ -215,8 +216,31 @@ public sealed class WgbCommandClientEnableModeTests
         Assert.True(result.Diagnostics.EnableSucceeded);
         Assert.True(result.Diagnostics.CommandExecuted);
         Assert.True(result.Diagnostics.FinalPromptConfirmed);
+        Assert.Contains(result.Diagnostics.Events, item => item.Message?.StartsWith("SSH_CONNECT_START host=192.0.2.10 port=22 user=admin auth=password timeout_ms=250", StringComparison.Ordinal) == true);
+        Assert.Contains(result.Diagnostics.Events, item => item.Message == "SSH_AUTH_OK");
         Assert.Contains(result.Diagnostics.Events, item => item.Kind == WgbPollEventKind.PromptDetected);
         Assert.Contains(result.Diagnostics.Events, item => item.Kind == WgbPollEventKind.CommandCompleted);
+    }
+
+    [Fact]
+    public async Task TcpConnectTimeoutReportsExactConnectionStageWithoutSecrets()
+    {
+        var plan = new FakeSessionPlan
+        {
+            ConnectException = new SshOperationTimeoutException("Connection failed to establish within 5000 milliseconds.")
+        };
+        var factory = new FakeSessionFactory(plan);
+        var client = new SshNetWgbCommandClient(factory);
+
+        var ex = await Assert.ThrowsAsync<WgbCommandException>(() => client.ExecuteCommandAsync(
+            CreateRequest(useEnableMode: true, timeoutMilliseconds: 5000),
+            CancellationToken.None));
+
+        Assert.Contains("SSH_CONNECT_FAILED stage=TCP_CONNECT", ex.Message);
+        Assert.DoesNotContain("ssh-secret", ex.Message);
+        Assert.Contains(ex.Diagnostics!.Events, item => item.Message?.StartsWith("SSH_CONNECT_START", StringComparison.Ordinal) == true);
+        Assert.Contains(ex.Diagnostics.Events, item => item.Message?.StartsWith("SSH_CONNECT_FAILED stage=TCP_CONNECT", StringComparison.Ordinal) == true);
+        Assert.True(factory.Sessions.Single().Disposed);
     }
 
     [Fact]
@@ -232,10 +256,13 @@ public sealed class WgbCommandClientEnableModeTests
         var request = CreateRequest(useEnableMode: true);
 
         var first = await client.ExecuteCommandAsync(request, CancellationToken.None);
-        var second = await client.ExecuteCommandAsync(request, CancellationToken.None);
+        var second = await client.ExecuteCommandWithDiagnosticsAsync(request, CancellationToken.None);
 
         Assert.Contains("MGN1080STV-223", first);
-        Assert.Contains("MGN1080STV-224", second);
+        Assert.Contains("MGN1080STV-224", second.RawOutput);
+        Assert.True(second.Diagnostics.ConnectionSucceeded);
+        Assert.True(second.Diagnostics.EnableSucceeded);
+        Assert.Contains(second.Diagnostics.Events, item => item.Message == "SSH_SESSION_REUSED host=192.0.2.10 port=22");
         var session = Assert.Single(factory.Sessions);
         Assert.Equal(2, session.ShellLines.Count(line => line == "show wgb dot11 associations"));
     }
@@ -347,17 +374,22 @@ public sealed class WgbCommandClientEnableModeTests
         }
     }
 
-    private sealed record FakeSessionPlan(params FakeShellPlan[] ShellPlans);
+    private sealed record FakeSessionPlan(params FakeShellPlan[] ShellPlans)
+    {
+        public Exception? ConnectException { get; init; }
+    }
 
     private sealed record FakeShellPlan(object InitialOutput, IReadOnlyList<object> Responses);
 
     private sealed class FakeSession : IWgbSshSession
     {
         private readonly Queue<FakeShellPlan> _shellPlans;
+        private readonly Exception? _connectException;
 
         public FakeSession(FakeSessionPlan plan)
         {
             _shellPlans = new Queue<FakeShellPlan>(plan.ShellPlans);
+            _connectException = plan.ConnectException;
         }
 
         public bool IsConnected { get; private set; }
@@ -372,6 +404,11 @@ public sealed class WgbCommandClientEnableModeTests
 
         public void Connect(CancellationToken cancellationToken)
         {
+            if (_connectException is not null)
+            {
+                throw _connectException;
+            }
+
             IsConnected = true;
         }
 
