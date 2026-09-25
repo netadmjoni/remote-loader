@@ -109,155 +109,192 @@
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
 
-          <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,8">
-            <WrapPanel DockPanel.Dock="Left">
-              <Button x:Name="StartMonitoringButton" Content="Start monitoring" Click="StartMonitoringButton_Click" />
-              <Button x:Name="StopMonitoringButton" Content="Stop monitoring" Click="StopMonitoringButton_Click" IsEnabled="False" />
-              <Button x:Name="StartWgbPollingButton" Content="Start WGB polling" Click="StartWgbPollingButton_Click" />
-              <Button x:Name="StopWgbPollingButton" Content="Stop WGB polling" Click="StopWgbPollingButton_Click" IsEnabled="False" />
-              <Button x:Name="OpenCurrentSessionButton" Content="Open current session" Click="OpenCurrentSessionButton_Click" IsEnabled="False" />
-              <Button x:Name="OpenLogFolderButton" Content="Open log folder" Click="OpenLogFolderButton_Click" />
-            </WrapPanel>
-            <TextBlock TextAlignment="Right" TextWrapping="Wrap" VerticalAlignment="Center">
-              <Run Text="Current session: " />
-              <Run x:Name="CurrentSessionTextBlock" Text="-" />
-            </TextBlock>
-          </DockPanel>
+          <Border Grid.Row="0"
+                  x:Name="DashboardStatusBorder"
+                  BorderBrush="#9AA4AF"
+                  BorderThickness="2"
+                  CornerRadius="4"
+                  Padding="10,8"
+                  Margin="0,0,0,6"
+                  Background="#F3F4F6">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.8*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1.15*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
 
-          <Grid Grid.Row="1" Margin="0,0,0,8">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="2.1*" />
-              <ColumnDefinition Width="3*" />
-              <ColumnDefinition Width="2*" />
-            </Grid.ColumnDefinitions>
-
-            <Border Grid.Column="0" Style="{StaticResource MetricCardStyle}" Background="#F8FAFC">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0"
-                           x:Name="DashboardStatusSymbolTextBlock"
-                           Text="OK"
-                           FontSize="28"
-                           FontWeight="Bold"
-                           MinWidth="58"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           TextAlignment="Center" />
-                <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                  <TextBlock Text="Communication status" Style="{StaticResource MetricLabelStyle}" />
+              <StackPanel Grid.Column="0" Margin="0,0,18,0" VerticalAlignment="Center">
+                <TextBlock Text="NETWORK STATUS"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="#5F6873" />
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="DashboardStatusSymbolTextBlock"
+                             Text="-"
+                             FontSize="22"
+                             FontWeight="Bold"
+                             MinWidth="34"
+                             VerticalAlignment="Center" />
                   <TextBlock x:Name="DashboardStatusTextBlock"
-                             Text="OK"
-                             FontSize="34"
+                             Text="STOPPED"
+                             FontSize="28"
                              FontWeight="Bold"
                              TextWrapping="Wrap" />
-                  <TextBlock x:Name="DashboardInterruptionTextBlock"
-                             Text="No active interruption"
-                             FontSize="14"
-                             FontWeight="SemiBold"
-                             TextWrapping="Wrap" />
-                  <TextBlock x:Name="DashboardRoamCorrelationTextBlock"
-                             Text="Latest roam: -"
-                             TextWrapping="Wrap" />
-                  <TextBlock x:Name="DashboardPreRoamRssiTextBlock"
-                             Text="RSSI roam: -"
-                             TextWrapping="Wrap" />
-                  <TextBlock x:Name="DashboardIcmpTimingTextBlock"
-                             Text="ICMP interval: 100 ms / timeout: 1000 ms / threshold: 600 ms"
-                             TextWrapping="Wrap" />
                 </StackPanel>
-              </Grid>
+                <TextBlock x:Name="DashboardInterruptionTextBlock"
+                           Text="Monitoring is not running"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Text="Current RTT" Style="{StaticResource MetricLabelStyle}" />
+                <TextBlock x:Name="CurrentRttTextBlock" Text="-" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Text="Ongoing loss" Style="{StaticResource MetricLabelStyle}" />
+                <TextBlock x:Name="ConsecutiveLossTextBlock" Text="0" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <StackPanel Grid.Column="3" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Text="Longest outage" Style="{StaticResource MetricLabelStyle}" />
+                <TextBlock x:Name="LongestOutageTextBlock" Text="0 ms" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <StackPanel Grid.Column="4" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Text="WGB" Style="{StaticResource MetricLabelStyle}" />
+                <TextBlock x:Name="DashboardWgbStatusTextBlock" Text="Not tested" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="StartMonitoringButton"
+                        Content="Start"
+                        MinWidth="72"
+                        Margin="0,0,6,0"
+                        Click="StartMonitoringButton_Click" />
+                <Button x:Name="StopMonitoringButton"
+                        Content="Stop"
+                        MinWidth="72"
+                        Margin="0"
+                        Click="StopMonitoringButton_Click"
+                        IsEnabled="False" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Border Grid.Row="1"
+                  BorderBrush="#D8DEE6"
+                  BorderThickness="1"
+                  CornerRadius="4"
+                  Padding="8,6"
+                  Margin="0,0,0,6"
+                  Background="#FAFBFC">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="0.85*" />
+                <ColumnDefinition Width="0.85*" />
+                <ColumnDefinition Width="0.85*" />
+                <ColumnDefinition Width="3*" />
+              </Grid.ColumnDefinitions>
+              <DockPanel Grid.Column="0" Margin="0,0,16,0" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Text="AP:" FontWeight="SemiBold" Margin="0,0,5,0" />
+                <TextBlock x:Name="ParentApTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+              <DockPanel Grid.Column="1" Margin="0,0,16,0" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Text="RSSI:" FontWeight="SemiBold" Margin="0,0,5,0" />
+                <TextBlock x:Name="RssiTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+              <DockPanel Grid.Column="2" Margin="0,0,16,0" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Text="Channel:" FontWeight="SemiBold" Margin="0,0,5,0" />
+                <TextBlock x:Name="ChannelTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+              <DockPanel Grid.Column="3" Margin="0,0,16,0" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Text="Radio:" FontWeight="SemiBold" Margin="0,0,5,0" />
+                <TextBlock x:Name="RadioIdTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+              <DockPanel Grid.Column="4" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Text="Last event:" FontWeight="SemiBold" Margin="0,0,5,0" />
+                <TextBlock x:Name="DashboardLatestEventTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+            </Grid>
+          </Border>
+
+          <Expander Grid.Row="2"
+                    x:Name="DashboardAdvancedExpander"
+                    Header="Tools / Advanced"
+                    IsExpanded="False"
+                    Margin="0,0,0,6">
+            <Border BorderBrush="#D8DEE6"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8"
+                    Background="#FAFBFC">
+              <StackPanel>
+                <WrapPanel>
+                  <Button x:Name="StartWgbPollingButton" Content="Start WGB polling" Click="StartWgbPollingButton_Click" />
+                  <Button x:Name="StopWgbPollingButton" Content="Stop WGB polling" Click="StopWgbPollingButton_Click" IsEnabled="False" />
+                  <Button x:Name="OpenCurrentSessionButton" Content="Open current session" Click="OpenCurrentSessionButton_Click" IsEnabled="False" />
+                  <Button x:Name="OpenLogFolderButton" Content="Open log folder" Click="OpenLogFolderButton_Click" />
+                </WrapPanel>
+                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8">
+                  <Run Text="Current session: " FontWeight="SemiBold" />
+                  <Run x:Name="CurrentSessionTextBlock" Text="-" />
+                </TextBlock>
+                <UniformGrid Columns="6" Margin="0,0,0,6">
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="ICMP state" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock x:Name="MonitorStatusTextBlock" Text="Stopped" FontWeight="SemiBold" />
+                  </StackPanel>
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="OK probes" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock x:Name="TotalOkTextBlock" Text="0" FontWeight="SemiBold" />
+                  </StackPanel>
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Lost probes" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock x:Name="TotalLostTextBlock" Text="0" FontWeight="SemiBold" />
+                  </StackPanel>
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Runtime" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock x:Name="RuntimeTextBlock" Text="00:00:00" FontWeight="SemiBold" />
+                  </StackPanel>
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Last WGB poll" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock x:Name="LastWgbPollTextBlock" Text="-" FontWeight="SemiBold" />
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="WGB data age" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock x:Name="WgbDataAgeTextBlock" Text="-" FontWeight="SemiBold" />
+                  </StackPanel>
+                </UniformGrid>
+                <TextBlock x:Name="DashboardRoamCorrelationTextBlock" Text="Latest roam: -" TextWrapping="Wrap" />
+                <TextBlock x:Name="DashboardPreRoamRssiTextBlock" Text="RSSI roam: -" TextWrapping="Wrap" />
+                <TextBlock x:Name="DashboardIcmpTimingTextBlock"
+                           Text="ICMP interval: 100 ms / timeout: 1000 ms / threshold: 600 ms"
+                           TextWrapping="Wrap" />
+                <WrapPanel Margin="0,6,0,0">
+                  <TextBlock Text="Graph WGB context: " FontWeight="SemiBold" />
+                  <TextBlock Text="AP " />
+                  <TextBlock x:Name="GraphParentApTextBlock" Text="-" Margin="0,0,12,0" />
+                  <TextBlock Text="RSSI " />
+                  <TextBlock x:Name="GraphRssiTextBlock" Text="-" Margin="0,0,12,0" />
+                  <TextBlock Text="channel " />
+                  <TextBlock x:Name="GraphChannelTextBlock" Text="-" Margin="0,0,12,0" />
+                  <TextBlock Text="radio " />
+                  <TextBlock x:Name="GraphRadioIdTextBlock" Text="-" />
+                </WrapPanel>
+              </StackPanel>
             </Border>
+          </Expander>
 
-            <UniformGrid Grid.Column="1" Columns="4">
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="ICMP" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="MonitorStatusTextBlock" Text="Stopped" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="Current RTT" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="CurrentRttTextBlock" Text="-" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="OK probes" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="TotalOkTextBlock" Text="0" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="Ongoing loss" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="ConsecutiveLossTextBlock" Text="0" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="Lost probes" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="TotalLostTextBlock" Text="0" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="Longest outage" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="LongestOutageTextBlock" Text="0 ms" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="Runtime" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="RuntimeTextBlock" Text="00:00:00" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource MetricCardStyle}">
-                <StackPanel>
-                  <TextBlock Text="WGB" Style="{StaticResource MetricLabelStyle}" />
-                  <TextBlock x:Name="DashboardWgbStatusTextBlock" Text="Not tested" Style="{StaticResource MetricValueStyle}" />
-                </StackPanel>
-              </Border>
-            </UniformGrid>
-
-            <Border Grid.Column="2" Style="{StaticResource MetricCardStyle}">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="WGB radio" Style="{StaticResource SectionTitleStyle}" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Parent AP:" FontWeight="SemiBold" Margin="0,0,8,5" />
-                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ParentApTextBlock" Text="-" TextTrimming="CharacterEllipsis" Margin="0,0,0,5" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="RSSI:" FontWeight="SemiBold" Margin="0,0,8,5" />
-                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="RssiTextBlock" Text="-" Margin="0,0,0,5" />
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Channel:" FontWeight="SemiBold" Margin="0,0,8,5" />
-                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="ChannelTextBlock" Text="-" Margin="0,0,0,5" />
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Radio ID:" FontWeight="SemiBold" Margin="0,0,8,5" />
-                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="RadioIdTextBlock" Text="-" Margin="0,0,0,5" />
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="Last poll:" FontWeight="SemiBold" Margin="0,0,8,5" />
-                <TextBlock Grid.Row="5" Grid.Column="1" x:Name="LastWgbPollTextBlock" Text="-" Margin="0,0,0,5" />
-                <TextBlock Grid.Row="6" Grid.Column="0" Text="Data age:" FontWeight="SemiBold" Margin="0,0,8,0" />
-                <TextBlock Grid.Row="6" Grid.Column="1" x:Name="WgbDataAgeTextBlock" Text="-" />
-              </Grid>
-            </Border>
-          </Grid>
-
-          <Grid Grid.Row="2">
+          <Grid Grid.Row="3">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
@@ -267,29 +304,21 @@
 
             <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,6">
               <WrapPanel DockPanel.Dock="Left">
-                <TextBlock Text="Window:" VerticalAlignment="Center" Margin="0,0,6,8" FontWeight="SemiBold" />
-                <Button Content="1 min" MinWidth="58" Click="GraphWindowPresetButton_Click" Tag="1" />
-                <Button Content="5 min" MinWidth="58" Click="GraphWindowPresetButton_Click" Tag="5" />
-                <Button Content="10 min" MinWidth="64" Click="GraphWindowPresetButton_Click" Tag="10" />
-                <Button Content="30 min" MinWidth="64" Click="GraphWindowPresetButton_Click" Tag="30" />
-                <Button Content="60 min" MinWidth="64" Click="GraphWindowPresetButton_Click" Tag="60" />
-                <Button x:Name="ClearGraphButton" Content="Clear graph" Click="ClearGraphButton_Click" />
-                <Button x:Name="PauseGraphButton" Content="Pause graph" Click="PauseGraphButton_Click" />
-                <Button x:Name="ResetZoomButton" Content="Reset zoom" Click="ResetZoomButton_Click" />
+                <TextBlock Text="Window:" VerticalAlignment="Center" Margin="0,0,6,4" FontWeight="SemiBold" />
+                <Button Content="1 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="1" />
+                <Button Content="5 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="5" />
+                <Button Content="10 min" MinWidth="60" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="10" />
+                <Button Content="30 min" MinWidth="60" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="30" />
+                <Button Content="60 min" MinWidth="60" Margin="0,0,10,4" Click="GraphWindowPresetButton_Click" Tag="60" />
+                <Button x:Name="ClearGraphButton" Content="Clear" MinWidth="64" Margin="0,0,6,4" Click="ClearGraphButton_Click" />
+                <Button x:Name="PauseGraphButton" Content="Pause" MinWidth="72" Margin="0,0,6,4" Click="PauseGraphButton_Click" />
+                <Button x:Name="ResetZoomButton" Content="Reset zoom" MinWidth="84" Margin="0,0,6,4" Click="ResetZoomButton_Click" />
               </WrapPanel>
               <WrapPanel HorizontalAlignment="Right">
-                <TextBlock Text="Graph:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
-                <TextBlock x:Name="GraphStatusTextBlock" Text="Autoscroll" VerticalAlignment="Center" MinWidth="130" Margin="0,0,0,8" />
-                <TextBlock Text="Window:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
-                <TextBlock x:Name="GraphWindowTextBlock" Text="10 min" VerticalAlignment="Center" MinWidth="54" Margin="0,0,0,8" />
-                <TextBlock Text="Parent AP:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
-                <TextBlock x:Name="GraphParentApTextBlock" Text="-" VerticalAlignment="Center" MinWidth="120" Margin="0,0,0,8" />
-                <TextBlock Text="RSSI:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
-                <TextBlock x:Name="GraphRssiTextBlock" Text="-" VerticalAlignment="Center" MinWidth="56" Margin="0,0,0,8" />
-                <TextBlock Text="Channel:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
-                <TextBlock x:Name="GraphChannelTextBlock" Text="-" VerticalAlignment="Center" MinWidth="48" Margin="0,0,0,8" />
-                <TextBlock Text="Radio ID:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
-                <TextBlock x:Name="GraphRadioIdTextBlock" Text="-" VerticalAlignment="Center" MinWidth="48" Margin="0,0,0,8" />
+                <TextBlock Text="Graph:" VerticalAlignment="Center" Margin="12,0,4,4" FontWeight="SemiBold" />
+                <TextBlock x:Name="GraphStatusTextBlock" Text="Autoscroll" VerticalAlignment="Center" MinWidth="88" Margin="0,0,0,4" />
+                <TextBlock Text="Window:" VerticalAlignment="Center" Margin="12,0,4,4" FontWeight="SemiBold" />
+                <TextBlock x:Name="GraphWindowTextBlock" Text="10 min" VerticalAlignment="Center" MinWidth="48" Margin="0,0,0,4" />
               </WrapPanel>
             </DockPanel>
 
@@ -302,28 +331,29 @@
                         x:Name="RssiPlot"
                         MinHeight="130" />
 
-            <Border Grid.Row="3"
-                    BorderBrush="#D8DEE6"
-                    BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="8"
-                    Margin="0,8,0,0"
-                    Background="#FAFBFC">
-              <Grid>
+            <Expander Grid.Row="3"
+                      x:Name="SelectedRoamExpander"
+                      IsExpanded="False"
+                      Margin="0,4,0,0">
+              <Expander.Header>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="Selected roam details" FontWeight="SemiBold" Margin="0,0,12,0" />
+                  <TextBlock x:Name="DashboardGraphStatusTextBlock"
+                             Text="0 roam markers - click a marker for details"
+                             Foreground="#5F6873" />
+                </StackPanel>
+              </Expander.Header>
+              <Border BorderBrush="#D8DEE6"
+                      BorderThickness="1"
+                      CornerRadius="4"
+                      Padding="8"
+                      Background="#FAFBFC">
+                <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,8">
-                  <TextBlock Text="Selected roam"
-                             Style="{StaticResource SectionTitleStyle}"
-                             DockPanel.Dock="Left"
-                             Margin="0,0,12,0" />
-                  <WrapPanel HorizontalAlignment="Right">
-                    <TextBlock x:Name="DashboardGraphStatusTextBlock"
-                               Text="0 roam markers - click a marker for details"
-                               VerticalAlignment="Center"
-                               Margin="0,0,12,8" />
+                <WrapPanel Grid.Row="0" HorizontalAlignment="Right" Margin="0,0,0,4">
                     <Button x:Name="PreviousRoamButton"
                             Content="Previous roam"
                             MinWidth="112"
@@ -336,8 +366,7 @@
                             Content="Clear selection"
                             MinWidth="112"
                             Click="ClearSelectedRoamButton_Click" />
-                  </WrapPanel>
-                </DockPanel>
+                </WrapPanel>
                 <UniformGrid Grid.Row="1" Columns="4">
                   <StackPanel Margin="0,0,12,6">
                     <TextBlock Text="Observed" Style="{StaticResource MetricLabelStyle}" />
@@ -372,8 +401,9 @@
                     <TextBlock x:Name="SelectedRoamRateTextBlock" Text="-" TextWrapping="Wrap" />
                   </StackPanel>
                 </UniformGrid>
-              </Grid>
-            </Border>
+                </Grid>
+              </Border>
+            </Expander>
           </Grid>
         </Grid>
       </TabItem>

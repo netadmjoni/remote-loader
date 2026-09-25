@@ -5,7 +5,7 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <Product>WGB Diagnostics</Product>
-    <VersionPrefix>0.1.12</VersionPrefix>
+    <VersionPrefix>0.1.13</VersionPrefix>
     <Version>$(VersionPrefix)</Version>
     <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>

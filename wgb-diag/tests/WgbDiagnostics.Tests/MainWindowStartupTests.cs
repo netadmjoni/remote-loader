@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Threading;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using ScottPlot.WPF;
 using WgbDiagnostics.App;
 using WgbDiagnostics.App.Configuration;
 using WgbDiagnostics.Core.Configuration;
@@ -28,6 +29,12 @@ public sealed class MainWindowStartupTests
                 Assert.Equal("Live diagnostics", liveTab.Header);
                 var version = GetPrivateControl<TextBlock>(window, "VersionTextBlock");
                 Assert.Contains("v", version.Text);
+                var dashboardStatus = GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock");
+                Assert.Equal("STOPPED", dashboardStatus.Text);
+                var dashboardAdvanced = GetPrivateControl<Expander>(window, "DashboardAdvancedExpander");
+                Assert.False(dashboardAdvanced.IsExpanded);
+                var selectedRoam = GetPrivateControl<Expander>(window, "SelectedRoamExpander");
+                Assert.False(selectedRoam.IsExpanded);
             });
     }
 
@@ -44,6 +51,28 @@ public sealed class MainWindowStartupTests
         options.EncryptedEnablePasswordPlaceholder = "";
 
         ConstructMainWindowOnSta(options);
+    }
+
+    [Fact]
+    public void DashboardKeepsStatusCompactAndGraphsVisibleAtMinimumWindowSize()
+    {
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            assertWindow: window =>
+            {
+                window.Width = window.MinWidth;
+                window.Height = window.MinHeight;
+                window.Show();
+                window.UpdateLayout();
+
+                var status = GetPrivateControl<Border>(window, "DashboardStatusBorder");
+                var rttPlot = GetPrivateControl<WpfPlot>(window, "RttPlot");
+                var rssiPlot = GetPrivateControl<WpfPlot>(window, "RssiPlot");
+
+                Assert.InRange(status.ActualHeight, 1, 110);
+                Assert.True(rttPlot.ActualHeight >= 150);
+                Assert.True(rssiPlot.ActualHeight >= 130);
+            });
     }
 
     [Fact]

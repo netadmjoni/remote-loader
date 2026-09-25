@@ -424,6 +424,7 @@ public partial class MainWindow : Window
     private void ClearSelectedRoamButton_Click(object sender, RoutedEventArgs e)
     {
         _roamMarkerSelection.Clear();
+        SelectedRoamExpander.IsExpanded = false;
         RenderRealtimeGraph(force: true, resetZoom: false);
     }
 
@@ -1838,6 +1839,7 @@ public partial class MainWindow : Window
             _roamMarkerSelection.SelectNext(snapshot.RoamEvents);
         }
 
+        SelectedRoamExpander.IsExpanded = _roamMarkerSelection.HasSelection;
         RenderRealtimeGraph(force: true, resetZoom: false);
     }
 
@@ -1845,6 +1847,7 @@ public partial class MainWindow : Window
     {
         var hitTargets = CreateRssiRoamHitTargets();
         _roamMarkerSelection.SelectNearest(hitTargets, GetRssiPlotDataPixelX(e));
+        SelectedRoamExpander.IsExpanded = _roamMarkerSelection.HasSelection;
         RenderRealtimeGraph(force: true, resetZoom: false);
     }
 
@@ -2253,19 +2256,62 @@ public partial class MainWindow : Window
     {
         var lossThresholdMilliseconds = GetDashboardLossThresholdMilliseconds();
         var pingStatus = snapshot.PingStatus;
-        var dashboardStatus = DetermineDashboardStatus(pingStatus, lossThresholdMilliseconds);
-        DashboardStatusTextBlock.Text = dashboardStatus;
-        DashboardStatusSymbolTextBlock.Text = dashboardStatus switch
+        var dashboardState = DetermineDashboardStatus(pingStatus, lossThresholdMilliseconds);
+        DashboardStatusTextBlock.Text = dashboardState switch
+        {
+            "DEGRADED" => "WARNING",
+            "OUTAGE" => "LOSS",
+            _ => dashboardState
+        };
+        DashboardStatusSymbolTextBlock.Text = dashboardState switch
         {
             "OK" => "OK",
             "DEGRADED" => "!",
             "OUTAGE" => "X",
-            _ => "?"
+            _ => "-"
         };
 
-        DashboardInterruptionTextBlock.Text = pingStatus.ConsecutiveLoss > 0
-            ? $"NETWORK INTERRUPTION - {FormatDuration(pingStatus.CurrentLossWindow)}"
-            : "No active interruption";
+        var statusForeground = dashboardState switch
+        {
+            "OK" => System.Windows.Media.Brushes.DarkGreen,
+            "DEGRADED" => System.Windows.Media.Brushes.DarkOrange,
+            "OUTAGE" => System.Windows.Media.Brushes.DarkRed,
+            _ => System.Windows.Media.Brushes.DimGray
+        };
+        DashboardStatusBorder.Background = dashboardState switch
+        {
+            "OK" => System.Windows.Media.Brushes.Honeydew,
+            "DEGRADED" => System.Windows.Media.Brushes.LemonChiffon,
+            "OUTAGE" => System.Windows.Media.Brushes.MistyRose,
+            _ => System.Windows.Media.Brushes.WhiteSmoke
+        };
+        DashboardStatusBorder.BorderBrush = dashboardState switch
+        {
+            "OK" => System.Windows.Media.Brushes.SeaGreen,
+            "DEGRADED" => System.Windows.Media.Brushes.DarkOrange,
+            "OUTAGE" => System.Windows.Media.Brushes.Crimson,
+            _ => System.Windows.Media.Brushes.DarkGray
+        };
+        DashboardStatusTextBlock.Foreground = statusForeground;
+        DashboardStatusSymbolTextBlock.Foreground = statusForeground;
+        DashboardInterruptionTextBlock.Foreground = statusForeground;
+
+        DashboardInterruptionTextBlock.Text = dashboardState == "STOPPED"
+            ? "Monitoring is not running"
+            : pingStatus.ConsecutiveLoss > 0
+                ? $"NETWORK INTERRUPTION - {FormatDuration(pingStatus.CurrentLossWindow)}"
+                : "No active interruption";
+
+        var latestMarker = snapshot.Markers.LastOrDefault();
+        DashboardLatestEventTextBlock.Text = latestMarker is null
+            ? "-"
+            : $"{latestMarker.Timestamp.ToLocalTime():HH:mm:ss} {latestMarker.Kind switch
+            {
+                RealtimeGraphMarkerKind.LossStarted => "Packet loss started",
+                RealtimeGraphMarkerKind.Recovered => "Connection restored",
+                RealtimeGraphMarkerKind.ParentApChanged => "Roam",
+                _ => latestMarker.Label
+            }}";
 
         var latestRoam = snapshot.RoamEvents.LastOrDefault();
         if (latestRoam is null)
@@ -2290,6 +2336,13 @@ public partial class MainWindow : Window
         PingRealtimeStatus pingStatus,
         int lossThresholdMilliseconds)
     {
+        if (pingStatus.Status.Equals("Stopped", StringComparison.OrdinalIgnoreCase)
+            && pingStatus.TotalOk == 0
+            && pingStatus.TotalLost == 0)
+        {
+            return "STOPPED";
+        }
+
         if (pingStatus.ConsecutiveLoss > 0
             && pingStatus.CurrentLossWindow.TotalMilliseconds >= lossThresholdMilliseconds)
         {
