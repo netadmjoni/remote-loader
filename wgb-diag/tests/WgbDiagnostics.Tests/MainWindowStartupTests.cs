@@ -232,6 +232,7 @@ public sealed class MainWindowStartupTests
                     ParseResult: null,
                     RawOutput: null,
                     Message: null));
+                SetPrivateField(window, "_operatorMonitoringSessionActive", true);
 
                 var render = typeof(MainWindow).GetMethod(
                     "RenderRealtimeGraph",
@@ -242,6 +243,86 @@ public sealed class MainWindowStartupTests
                 Assert.Equal("OK", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
                 Assert.Equal("", GetPrivateControl<TextBlock>(window, "DashboardStatusSymbolTextBlock").Text);
                 Assert.Equal("144.4/130.0 Mbps", GetPrivateControl<TextBlock>(window, "DashboardRateTextBlock").Text);
+            });
+    }
+
+    [Fact]
+    public void DashboardSeparatesActiveDurationFromCompletedOutageAndReconnectState()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.PingTarget = "10.194.240.10";
+        options.WgbStaleAfterSeconds = 1;
+
+        ConstructMainWindowOnSta(
+            options,
+            assertWindow: window =>
+            {
+                var now = DateTimeOffset.UtcNow;
+                var realtime = GetPrivateControl<DiagnosticsRealtimeModel>(window, "_realtimeModel");
+                realtime.Apply(new IcmpMonitorEvent(
+                    IcmpMonitorEventKind.LossStarted,
+                    now.AddSeconds(-3),
+                    SequenceNumber: 1,
+                    RoundTripTime: null,
+                    ConsecutiveLoss: 1,
+                    EstimatedLossWindowMilliseconds: 100,
+                    Message: null));
+                realtime.Apply(new IcmpMonitorEvent(
+                    IcmpMonitorEventKind.Recovered,
+                    now.AddSeconds(-2),
+                    SequenceNumber: 2,
+                    RoundTripTime: TimeSpan.FromMilliseconds(5),
+                    ConsecutiveLoss: 0,
+                    EstimatedLossWindowMilliseconds: 420,
+                    Message: null));
+                realtime.Apply(new IcmpMonitorEvent(
+                    IcmpMonitorEventKind.LossStarted,
+                    now,
+                    SequenceNumber: 3,
+                    RoundTripTime: null,
+                    ConsecutiveLoss: 7,
+                    EstimatedLossWindowMilliseconds: 700,
+                    Message: null));
+                realtime.Apply(new WgbPollEvent(
+                    WgbPollEventKind.PollSucceeded,
+                    now.AddSeconds(-10),
+                    new WgbAssociationSnapshot(
+                        "AP-221",
+                        "aa:bb:cc",
+                        "44",
+                        "-68",
+                        "2",
+                        TxRate: "144.4 Mbps",
+                        RxRate: "130.0 Mbps",
+                        WgbIp: "192.168.1.20",
+                        AssociationStatus: "Associated",
+                        CandidateApName: null,
+                        CandidateBssid: null),
+                    ParseResult: null,
+                    RawOutput: null,
+                    Message: null));
+                realtime.Apply(new WgbPollEvent(
+                    WgbPollEventKind.ReconnectScheduled,
+                    now,
+                    Association: null,
+                    ParseResult: null,
+                    RawOutput: null,
+                    Message: "Reconnect scheduled in 60 seconds."));
+                SetPrivateField(window, "_operatorMonitoringSessionActive", true);
+
+                var render = typeof(MainWindow).GetMethod(
+                    "RenderRealtimeGraph",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(render);
+                render!.Invoke(window, [true, false]);
+
+                Assert.Equal("NETWORK INTERRUPTION", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
+                Assert.Equal(System.Windows.Visibility.Visible, GetPrivateControl<StackPanel>(window, "DashboardDurationPanel").Visibility);
+                Assert.Equal("700 ms", GetPrivateControl<TextBlock>(window, "DashboardDurationTextBlock").Text);
+                Assert.Equal("7", GetPrivateControl<TextBlock>(window, "ConsecutiveLossTextBlock").Text);
+                Assert.Equal("420 ms", GetPrivateControl<TextBlock>(window, "LastOutageTextBlock").Text);
+                Assert.Equal("700 ms", GetPrivateControl<TextBlock>(window, "LongestOutageTextBlock").Text);
+                Assert.Equal($"Stale{Environment.NewLine}Reconnecting", GetPrivateControl<TextBlock>(window, "DashboardWgbStatusTextBlock").Text);
             });
     }
 
@@ -426,6 +507,7 @@ public sealed class MainWindowStartupTests
 
                 Assert.True(monitoringServices.IcmpStarted.Wait(TimeSpan.FromSeconds(5)), "ICMP monitoring did not start.");
                 Assert.True(monitoringServices.WgbStarted.Wait(TimeSpan.FromSeconds(5)), "WGB polling did not start.");
+                Assert.Equal("STARTING", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
 
                 GetPrivateControl<Button>(window, "StopMonitoringButton").RaiseEvent(
                     new System.Windows.RoutedEventArgs(Button.ClickEvent));
@@ -433,6 +515,12 @@ public sealed class MainWindowStartupTests
                 PumpDispatcherUntil(
                     () => monitoringServices.IcmpStopped.IsSet && monitoringServices.WgbStopped.IsSet,
                     TimeSpan.FromSeconds(5));
+
+                Assert.Equal("STOPPED", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
+                Assert.Equal("-", GetPrivateControl<TextBlock>(window, "CurrentRttTextBlock").Text);
+                Assert.Equal("-", GetPrivateControl<TextBlock>(window, "ConsecutiveLossTextBlock").Text);
+                Assert.Equal("Stopped", GetPrivateControl<TextBlock>(window, "DashboardWgbStatusTextBlock").Text);
+                Assert.Equal(System.Windows.Visibility.Collapsed, GetPrivateControl<StackPanel>(window, "DashboardDurationPanel").Visibility);
             },
             icmpMonitor: monitoringServices,
             wgbPollingService: monitoringServices);
@@ -576,6 +664,13 @@ public sealed class MainWindowStartupTests
         var field = typeof(MainWindow).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         return Assert.IsType<T>(field.GetValue(window));
+    }
+
+    private static void SetPrivateField<T>(MainWindow window, string name, T value)
+    {
+        var field = typeof(MainWindow).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field!.SetValue(window, value);
     }
 
     private sealed class FakeSettingsFileStore : ISettingsFileStore

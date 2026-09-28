@@ -57,10 +57,27 @@ public sealed class DiagnosticsRealtimeModelTests
         Assert.Equal(1, snapshot.PingStatus.TotalLost);
         Assert.Equal(0, snapshot.PingStatus.ConsecutiveLoss);
         Assert.Equal(TimeSpan.Zero, snapshot.PingStatus.CurrentLossWindow);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), snapshot.PingStatus.LastOutage);
         Assert.Equal(TimeSpan.FromMilliseconds(100), snapshot.PingStatus.LongestOutage);
         Assert.Equal("Recovered", snapshot.PingStatus.Status);
         Assert.Contains(snapshot.Markers, marker => marker.Kind == RealtimeGraphMarkerKind.LossStarted);
         Assert.Contains(snapshot.Markers, marker => marker.Kind == RealtimeGraphMarkerKind.Recovered);
+    }
+
+    [Fact]
+    public void LastCompletedOutageRemainsVisibleDuringNextActiveOutage()
+    {
+        var model = new DiagnosticsRealtimeModel();
+
+        model.Apply(Ping(IcmpMonitorEventKind.LossStarted, seconds: 1, consecutiveLoss: 1, lossWindow: 100));
+        model.Apply(Ping(IcmpMonitorEventKind.Recovered, seconds: 2, rttMilliseconds: 8, lossWindow: 420));
+        model.Apply(Ping(IcmpMonitorEventKind.LossStarted, seconds: 3, consecutiveLoss: 1, lossWindow: 700));
+
+        var status = model.Snapshot(BaseTimestamp.AddSeconds(3)).PingStatus;
+
+        Assert.Equal(TimeSpan.FromMilliseconds(420), status.LastOutage);
+        Assert.Equal(TimeSpan.FromMilliseconds(700), status.CurrentLossWindow);
+        Assert.Equal(TimeSpan.FromMilliseconds(700), status.LongestOutage);
     }
 
     [Fact]

@@ -55,6 +55,7 @@ public partial class MainWindow : Window
     private int _graphTimerTicks;
     private long _totalOk;
     private long _totalLost;
+    private bool _operatorMonitoringSessionActive;
     private PingEventViewMode _pingViewMode = PingEventViewMode.Event;
     private LiveDiagnosticsLayout _liveDiagnosticsLayout = LiveDiagnosticsLayout.Auto;
     private double _liveDiagnosticsSplitterPosition = 0.5;
@@ -179,12 +180,14 @@ public partial class MainWindow : Window
         TotalLostTextBlock.Text = "0";
         ConsecutiveLossTextBlock.Text = "0";
         CurrentRttTextBlock.Text = "-";
+        LastOutageTextBlock.Text = "0 ms";
         LongestOutageTextBlock.Text = "0 ms";
         RuntimeTextBlock.Text = "00:00:00";
         ProbeEventsListBox.Items.Clear();
         _pingEventView.Reset();
 
         var monitorOptions = IcmpMonitorOptions.FromDiagnosticsOptions(diagnosticsOptions);
+        _operatorMonitoringSessionActive = true;
         _monitoringCancellation = new CancellationTokenSource();
         StartMonitoringButton.IsEnabled = false;
         StopMonitoringButton.IsEnabled = true;
@@ -206,11 +209,14 @@ public partial class MainWindow : Window
             diagnosticsOptions,
             SshPasswordBox.Password,
             EnablePasswordBox.Password));
+        ApplyDashboardSummary(_realtimeModel.Snapshot(DateTimeOffset.UtcNow));
     }
 
     private async void StopMonitoringButton_Click(object sender, RoutedEventArgs e)
     {
+        _operatorMonitoringSessionActive = false;
         StopMonitoringButton.IsEnabled = false;
+        ApplyDashboardSummary(_latestRealtimeSnapshot ?? _realtimeModel.Snapshot(DateTimeOffset.UtcNow));
         await StopWgbPollingAsync();
         await StopMonitoringAsync();
     }
@@ -2447,6 +2453,7 @@ public partial class MainWindow : Window
         TotalOkTextBlock.Text = snapshot.PingStatus.TotalOk.ToString(CultureInfo.InvariantCulture);
         TotalLostTextBlock.Text = snapshot.PingStatus.TotalLost.ToString(CultureInfo.InvariantCulture);
         ConsecutiveLossTextBlock.Text = snapshot.PingStatus.ConsecutiveLoss.ToString(CultureInfo.InvariantCulture);
+        LastOutageTextBlock.Text = FormatDuration(snapshot.PingStatus.LastOutage);
         LongestOutageTextBlock.Text = FormatDuration(snapshot.PingStatus.LongestOutage);
         RuntimeTextBlock.Text = FormatRuntime(snapshot.PingStatus.Runtime);
 
@@ -2513,7 +2520,7 @@ public partial class MainWindow : Window
         {
             "ICMP_NOT_CONFIGURED" => "ICMP NOT CONFIGURED",
             "DEGRADED" => "WARNING",
-            "OUTAGE" => "LOSS",
+            "OUTAGE" => "NETWORK INTERRUPTION",
             _ => dashboardState
         };
         DashboardStatusSymbolTextBlock.Text = dashboardState switch
@@ -2549,13 +2556,31 @@ public partial class MainWindow : Window
         DashboardStatusSymbolTextBlock.Foreground = statusForeground;
         DashboardInterruptionTextBlock.Foreground = statusForeground;
 
+        var hasActiveLoss = _operatorMonitoringSessionActive && pingStatus.ConsecutiveLoss > 0;
+        DashboardDurationPanel.Visibility = hasActiveLoss ? Visibility.Visible : Visibility.Collapsed;
+        DashboardInterruptionTextBlock.Visibility = hasActiveLoss ? Visibility.Collapsed : Visibility.Visible;
+        DashboardDurationTextBlock.Text = hasActiveLoss
+            ? FormatDuration(pingStatus.CurrentLossWindow)
+            : "-";
         DashboardInterruptionTextBlock.Text = dashboardState switch
         {
             "ICMP_NOT_CONFIGURED" => "ICMP target is not configured",
             "STOPPED" => "Monitoring is not running",
-            _ when pingStatus.ConsecutiveLoss > 0 => $"NETWORK INTERRUPTION - {FormatDuration(pingStatus.CurrentLossWindow)}",
+            "STARTING" => "Monitoring is starting",
             _ => "No active interruption"
         };
+
+        CurrentRttTextBlock.Text = dashboardState == "STOPPED"
+            ? "-"
+            : FormatRoundTripTime(pingStatus.CurrentRoundTripTime);
+        ConsecutiveLossTextBlock.Text = dashboardState == "STOPPED"
+            ? "-"
+            : pingStatus.ConsecutiveLoss.ToString(CultureInfo.InvariantCulture);
+        LastOutageTextBlock.Text = FormatDuration(pingStatus.LastOutage);
+        LongestOutageTextBlock.Text = FormatDuration(pingStatus.LongestOutage);
+        DashboardWgbStatusTextBlock.Text = dashboardState == "STOPPED"
+            ? "Stopped"
+            : FormatDashboardWgbStatus(snapshot.WgbStatus);
 
         var latestMarker = snapshot.LatestMeaningfulEvent;
         DashboardLatestEventTextBlock.Text = latestMarker is null
@@ -2596,11 +2621,16 @@ public partial class MainWindow : Window
             return "ICMP_NOT_CONFIGURED";
         }
 
+        if (!_operatorMonitoringSessionActive)
+        {
+            return "STOPPED";
+        }
+
         if (pingStatus.Status.Equals("Stopped", StringComparison.OrdinalIgnoreCase)
             && pingStatus.TotalOk == 0
             && pingStatus.TotalLost == 0)
         {
-            return "STOPPED";
+            return "STARTING";
         }
 
         if (pingStatus.ConsecutiveLoss > 0
@@ -2904,12 +2934,13 @@ public partial class MainWindow : Window
 
     private static string FormatDashboardWgbStatus(WgbRealtimeStatus status)
     {
+        var isReconnecting = status.Status.Contains("Reconnecting", StringComparison.OrdinalIgnoreCase);
         if (status.IsStale)
         {
-            return "Stale";
+            return isReconnecting ? $"Stale{Environment.NewLine}Reconnecting" : "Stale";
         }
 
-        if (status.Status.Contains("Reconnecting", StringComparison.OrdinalIgnoreCase))
+        if (isReconnecting)
         {
             return "Reconnecting";
         }

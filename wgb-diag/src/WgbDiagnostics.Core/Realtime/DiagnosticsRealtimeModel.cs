@@ -273,6 +273,7 @@ public sealed class DiagnosticsRealtimeModel
             {
                 CurrentRoundTripTime = monitorEvent.RoundTripTime,
                 ConsecutiveLoss = 0,
+                LastOutage = TimeSpan.FromMilliseconds(monitorEvent.EstimatedLossWindowMilliseconds),
                 CurrentLossWindow = TimeSpan.Zero,
                 CurrentLossStartedAt = null,
                 Status = "Recovered"
@@ -690,6 +691,7 @@ public sealed record PingRealtimeStatus(
     long TotalOk,
     long TotalLost,
     int ConsecutiveLoss,
+    TimeSpan LastOutage,
     TimeSpan LongestOutage,
     TimeSpan Runtime,
     TimeSpan CurrentLossWindow,
@@ -701,6 +703,7 @@ public sealed record PingRealtimeStatus(
         TotalOk: 0,
         TotalLost: 0,
         ConsecutiveLoss: 0,
+        LastOutage: TimeSpan.Zero,
         LongestOutage: TimeSpan.Zero,
         Runtime: TimeSpan.Zero,
         CurrentLossWindow: TimeSpan.Zero,
