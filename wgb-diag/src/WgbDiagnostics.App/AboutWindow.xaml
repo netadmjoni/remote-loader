@@ -1,0 +1,50 @@
+<Window x:Class="WgbDiagnostics.App.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About WGB Diagnostics"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <Grid Margin="24" MinWidth="420">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <TextBlock x:Name="ProductNameTextBlock"
+               Grid.Row="0"
+               FontSize="22"
+               FontWeight="SemiBold" />
+    <TextBlock x:Name="ProductVersionTextBlock"
+               Grid.Row="1"
+               Margin="0,4,0,18" />
+    <TextBlock x:Name="AttributionTextBlock"
+               Grid.Row="2"
+               Text="Originally developed by Johan Nilsson at IITN."
+               Margin="0,0,0,12" />
+    <TextBlock x:Name="LicenseTextBlock"
+               Grid.Row="3"
+               Text="Licensed under the Apache License, Version 2.0."
+               Margin="0,0,0,12" />
+    <TextBlock Grid.Row="4" Margin="0,0,0,20">
+      <Run Text="GitHub: " />
+      <Hyperlink x:Name="ProjectHyperlink"
+                 NavigateUri="https://github.com/netadmjoni/remote-loader/tree/main/wgb-diag"
+                 RequestNavigate="ProjectHyperlink_RequestNavigate">
+        github.com/netadmjoni/remote-loader/tree/main/wgb-diag
+      </Hyperlink>
+    </TextBlock>
+    <Button Grid.Row="5"
+            Content="OK"
+            IsDefault="True"
+            IsCancel="True"
+            HorizontalAlignment="Right"
+            MinWidth="80"
+            Click="CloseButton_Click" />
+  </Grid>
+</Window>

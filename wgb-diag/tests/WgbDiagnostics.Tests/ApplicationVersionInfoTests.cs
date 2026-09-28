@@ -56,6 +56,14 @@ public sealed class ApplicationVersionInfoTests
         Assert.Contains("Path:", aboutText);
     }
 
+    [Fact]
+    public void AboutUsesCanonicalWgbDiagnosticsProjectUrl()
+    {
+        Assert.Equal(
+            "https://github.com/netadmjoni/remote-loader/tree/main/wgb-diag",
+            AboutWindow.ProjectUrl);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -361,7 +361,7 @@ public sealed class DiagnosticSessionLoggerTests
     }
 
     private static WgbDiagnosticsOptions CreateConfigSnapshot(
-        string username = "root",
+        string username = "wgb-admin",
         string passwordPlaceholder = "",
         string enablePasswordPlaceholder = "")
     {

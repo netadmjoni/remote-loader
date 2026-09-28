@@ -15,9 +15,9 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         }
 
         AddRequiredTextError(errors, "Application name", options.ApplicationName);
-        AddRequiredTextError(errors, "WGB address", options.WgbAddress);
+        AddOptionalTextError(errors, "WGB address", options.WgbAddress);
         AddPortError(errors, "SSH port", options.SshPort);
-        AddRequiredTextError(errors, "SSH username", options.SshUsername);
+        AddOptionalTextError(errors, "SSH username", options.SshUsername);
         AddEnableCommandError(errors, options.UseEnableMode, options.EnableCommand);
         AddPositiveIntegerError(errors, "WGB poll interval", options.WgbPollIntervalSeconds, "seconds");
         AddPositiveIntegerError(errors, "WGB reconnect initial", options.WgbReconnectInitialSeconds, "seconds");
@@ -76,6 +76,17 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
         }
 
         if (value.Any(char.IsControl))
+        {
+            errors.Add(new ConfigurationValidationError(field, $"{field} cannot contain control characters."));
+        }
+    }
+
+    private static void AddOptionalTextError(
+        ICollection<ConfigurationValidationError> errors,
+        string field,
+        string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && value.Any(char.IsControl))
         {
             errors.Add(new ConfigurationValidationError(field, $"{field} cannot contain control characters."));
         }

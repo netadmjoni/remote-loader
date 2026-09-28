@@ -27,6 +27,10 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         Assert.Equal(2, options.WgbReconnectInitialSeconds);
         Assert.Equal(60, options.WgbReconnectMaximumSeconds);
         Assert.Equal(5, options.WgbStaleAfterSeconds);
+        Assert.Empty(options.WgbAddress);
+        Assert.Empty(options.SshUsername);
+        Assert.Empty(options.EncryptedPasswordPlaceholder);
+        Assert.Empty(options.EncryptedEnablePasswordPlaceholder);
         Assert.Empty(options.PingTarget);
         Assert.Equal(100, options.PingIntervalMilliseconds);
         Assert.Equal(1000, options.PingTimeoutMilliseconds);
@@ -70,12 +74,25 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         var fields = _validator.Validate(options).Select(error => error.Field).ToArray();
 
         Assert.Contains("Application name", fields);
-        Assert.Contains("WGB address", fields);
-        Assert.Contains("SSH username", fields);
+        Assert.DoesNotContain("WGB address", fields);
+        Assert.DoesNotContain("SSH username", fields);
         Assert.Contains("WGB command", fields);
         Assert.Contains("Parser profile", fields);
         Assert.DoesNotContain("Ping target", fields);
         Assert.Contains("Log directory", fields);
+    }
+
+    [Fact]
+    public void OptionalSiteFieldsStillRejectControlCharacters()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.WgbAddress = "wgb\naddress";
+        options.SshUsername = "operator\tname";
+
+        var fields = _validator.Validate(options).Select(error => error.Field).ToArray();
+
+        Assert.Contains("WGB address", fields);
+        Assert.Contains("SSH username", fields);
     }
 
     [Fact]

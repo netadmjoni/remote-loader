@@ -30,6 +30,28 @@ public sealed class WgbDiagnosticsOptionsMigrationTests
     }
 
     [Fact]
+    public void ConfiguredSiteAndCredentialValuesArePreserved()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.WgbAddress = "10.194.240.11";
+        options.SshUsername = "wgb-admin";
+        options.EncryptedPasswordPlaceholder = "protected-ssh";
+        options.EncryptedEnablePasswordPlaceholder = "protected-enable";
+        options.PingTarget = "10.194.240.10";
+
+        var changed = WgbDiagnosticsOptionsMigration.Apply(
+            options,
+            WgbDiagnosticsOptionsMigration.CurrentSettingsVersion);
+
+        Assert.False(changed);
+        Assert.Equal("10.194.240.11", options.WgbAddress);
+        Assert.Equal("wgb-admin", options.SshUsername);
+        Assert.Equal("protected-ssh", options.EncryptedPasswordPlaceholder);
+        Assert.Equal("protected-enable", options.EncryptedEnablePasswordPlaceholder);
+        Assert.Equal("10.194.240.10", options.PingTarget);
+    }
+
+    [Fact]
     public void LegacyNormalDiagnosticsDefaultsMigrateOnceToEventFocusedModes()
     {
         var options = WgbDiagnosticsOptions.CreateDefault();

@@ -8,11 +8,11 @@ public sealed class WgbDiagnosticsOptions
 
     public string ApplicationName { get; set; } = "WGB Diagnostics";
 
-    public string WgbAddress { get; set; } = "192.168.1.1";
+    public string WgbAddress { get; set; } = "";
 
     public int SshPort { get; set; } = 22;
 
-    public string SshUsername { get; set; } = "root";
+    public string SshUsername { get; set; } = "";
 
     public string EncryptedPasswordPlaceholder { get; set; } = "";
 

@@ -80,6 +80,11 @@ public sealed class MainWindowStartupTests
                 Assert.Equal("10", GetPrivateControl<Button>(window, "GraphWindow10MinuteButton").Tag?.ToString());
                 Assert.Equal("30", GetPrivateControl<Button>(window, "GraphWindow30MinuteButton").Tag?.ToString());
                 Assert.Equal("10000", GetPrivateControl<TextBox>(window, "EventDisplayBufferSizeTextBox").Text);
+                Assert.Empty(GetPrivateControl<TextBox>(window, "WgbAddressTextBox").Text);
+                Assert.Empty(GetPrivateControl<TextBox>(window, "SshUsernameTextBox").Text);
+                Assert.Empty(GetPrivateControl<PasswordBox>(window, "SshPasswordBox").Password);
+                Assert.Empty(GetPrivateControl<PasswordBox>(window, "EnablePasswordBox").Password);
+                Assert.Empty(GetPrivateControl<TextBox>(window, "PingTargetTextBox").Text);
                 Assert.Equal("100 ms", GetPrivateControl<TextBlock>(window, "LivePingIntervalTextBlock").Text);
                 Assert.Equal("1000 ms", GetPrivateControl<TextBlock>(window, "LivePingTimeoutTextBlock").Text);
                 Assert.Equal("600 ms", GetPrivateControl<TextBlock>(window, "LiveLossThresholdTextBlock").Text);
@@ -161,6 +166,48 @@ public sealed class MainWindowStartupTests
 
                 var debugEvent = Assert.Single(GetPrivateControl<ListBox>(window, "WgbEventsListBox").Items.Cast<object>());
                 Assert.Contains("RSSI magnitude", debugEvent.ToString(), StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void AboutShowsDynamicVersionAttributionLicenseAndProjectLink()
+    {
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            assertWindow: _ =>
+            {
+                var version = new ApplicationVersionInfo(
+                    "WGB Diagnostics",
+                    "0.1.28",
+                    "0.1.28+test",
+                    "test",
+                    ".NET 8",
+                    "X64",
+                    "WgbDiagnostics.App.exe");
+                var about = new AboutWindow(version);
+                try
+                {
+                    Assert.Equal(
+                        "WGB Diagnostics",
+                        Assert.IsType<TextBlock>(about.FindName("ProductNameTextBlock")).Text);
+                    Assert.Equal(
+                        "Version 0.1.28",
+                        Assert.IsType<TextBlock>(about.FindName("ProductVersionTextBlock")).Text);
+                    Assert.Equal(
+                        AboutWindow.ProjectUrl,
+                        Assert.IsType<System.Windows.Documents.Hyperlink>(about.FindName("ProjectHyperlink"))
+                            .NavigateUri.AbsoluteUri.TrimEnd('/'));
+                    Assert.Contains(
+                        "Johan Nilsson at IITN",
+                        Assert.IsType<TextBlock>(about.FindName("AttributionTextBlock")).Text);
+                    Assert.Contains(
+                        "Apache License, Version 2.0",
+                        Assert.IsType<TextBlock>(about.FindName("LicenseTextBlock")).Text);
+                }
+                finally
+                {
+                    about.Close();
+                }
             });
     }
 
@@ -497,11 +544,14 @@ public sealed class MainWindowStartupTests
         var monitoringServices = new TrackingMonitoringServices();
         var options = WgbDiagnosticsOptions.CreateDefault();
         options.PingTarget = "10.194.240.10";
+        options.WgbAddress = "10.194.240.11";
+        options.SshUsername = "wgb-admin";
 
         ConstructMainWindowOnSta(
             options,
             assertWindow: window =>
             {
+                GetPrivateControl<PasswordBox>(window, "SshPasswordBox").Password = "ssh-secret";
                 GetPrivateControl<Button>(window, "StartMonitoringButton").RaiseEvent(
                     new System.Windows.RoutedEventArgs(Button.ClickEvent));
 
@@ -547,6 +597,18 @@ public sealed class MainWindowStartupTests
                 Assert.Contains(
                     errors.Items.Cast<string>(),
                     error => error.Contains("Ping target not configured", StringComparison.Ordinal));
+                Assert.Contains(
+                    errors.Items.Cast<string>(),
+                    error => error.Contains("WGB address not configured", StringComparison.Ordinal));
+                Assert.Contains(
+                    errors.Items.Cast<string>(),
+                    error => error.Contains("WGB username not configured", StringComparison.Ordinal));
+                Assert.Contains(
+                    errors.Items.Cast<string>(),
+                    error => error.Contains("WGB password not configured", StringComparison.Ordinal));
+                Assert.Equal(
+                    "Monitoring cannot start. Configure the listed settings before starting monitoring.",
+                    GetPrivateControl<TextBlock>(window, "StatusTextBlock").Text);
                 Assert.True(GetPrivateControl<Button>(window, "StartMonitoringButton").IsEnabled);
                 Assert.False(GetPrivateControl<Button>(window, "StopMonitoringButton").IsEnabled);
             },
@@ -554,12 +616,119 @@ public sealed class MainWindowStartupTests
             wgbPollingService: monitoringServices);
     }
 
+    [Fact]
+    public void TestWgbConnectionWithoutConfigurationDoesNotAttemptSsh()
+    {
+        var commandClient = new TrackingWgbCommandClient();
+
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            assertWindow: window =>
+            {
+                GetPrivateControl<Border>(window, "AdminEngineeringSettingsPanel").IsEnabled = true;
+                GetPrivateControl<Button>(window, "TestSshButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal(0, commandClient.CallCount);
+                var errors = GetPrivateControl<ListBox>(window, "ValidationErrorsListBox");
+                Assert.Contains(errors.Items.Cast<string>(), item => item == "WGB address not configured.");
+                Assert.Contains(errors.Items.Cast<string>(), item => item == "WGB username not configured.");
+                Assert.Contains(errors.Items.Cast<string>(), item => item == "WGB password not configured.");
+                Assert.DoesNotContain(errors.Items.Cast<string>(), item => item.Contains("Ping target", StringComparison.Ordinal));
+            },
+            wgbCommandClient: commandClient);
+    }
+
+    [Fact]
+    public void TestWgbConnectionDoesNotRequirePingTarget()
+    {
+        var commandClient = new TrackingWgbCommandClient();
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.WgbAddress = "10.194.240.11";
+        options.SshUsername = "wgb-admin";
+
+        ConstructMainWindowOnSta(
+            options,
+            assertWindow: window =>
+            {
+                GetPrivateControl<Border>(window, "AdminEngineeringSettingsPanel").IsEnabled = true;
+                GetPrivateControl<PasswordBox>(window, "SshPasswordBox").Password = "ssh-secret";
+                GetPrivateControl<Button>(window, "TestSshButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal(1, commandClient.CallCount);
+                Assert.Contains(
+                    "WGB connection test succeeded",
+                    GetPrivateControl<TextBlock>(window, "WgbStatusTextBlock").Text);
+            },
+            wgbCommandClient: commandClient);
+    }
+
+    [Fact]
+    public void TestWgbConnectionRequiresEnablePasswordWhenEnableModeIsEnabled()
+    {
+        var commandClient = new TrackingWgbCommandClient();
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.WgbAddress = "10.194.240.11";
+        options.SshUsername = "wgb-admin";
+        options.UseEnableMode = true;
+
+        ConstructMainWindowOnSta(
+            options,
+            assertWindow: window =>
+            {
+                GetPrivateControl<Border>(window, "AdminEngineeringSettingsPanel").IsEnabled = true;
+                GetPrivateControl<PasswordBox>(window, "SshPasswordBox").Password = "ssh-secret";
+                GetPrivateControl<Button>(window, "TestSshButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal(0, commandClient.CallCount);
+                Assert.Contains(
+                    GetPrivateControl<ListBox>(window, "ValidationErrorsListBox").Items.Cast<string>(),
+                    item => item == "WGB enable password not configured.");
+            },
+            wgbCommandClient: commandClient);
+    }
+
+    [Fact]
+    public void ConfiguredSiteSettingsCanBeEnteredAndSaved()
+    {
+        var settingsStore = new FakeSettingsFileStore(WgbDiagnosticsOptions.CreateDefault());
+        var protector = new FakeSecretProtector();
+
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            protector,
+            assertWindow: window =>
+            {
+                GetPrivateControl<TextBox>(window, "WgbAddressTextBox").Text = "10.194.240.11";
+                GetPrivateControl<TextBox>(window, "SshUsernameTextBox").Text = "wgb-admin";
+                GetPrivateControl<PasswordBox>(window, "SshPasswordBox").Password = "ssh-secret";
+                GetPrivateControl<CheckBox>(window, "SaveSshPasswordCheckBox").IsChecked = true;
+                GetPrivateControl<TextBox>(window, "PingTargetTextBox").Text = "10.194.240.10";
+                GetPrivateControl<Button>(window, "SaveSettingsButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                var saved = Assert.IsType<WgbDiagnosticsOptions>(settingsStore.SavedOptions);
+                Assert.Equal("10.194.240.11", saved.WgbAddress);
+                Assert.Equal("wgb-admin", saved.SshUsername);
+                Assert.Equal("10.194.240.10", saved.PingTarget);
+                Assert.Equal("protected:ssh-secret", saved.EncryptedPasswordPlaceholder);
+                Assert.Equal(
+                    $"Settings saved to {settingsStore.SettingsPath}.",
+                    GetPrivateControl<TextBlock>(window, "StatusTextBlock").Text);
+            },
+            settingsFileStore: settingsStore);
+    }
+
     private static void ConstructMainWindowOnSta(
         WgbDiagnosticsOptions options,
         ISecretProtector? secretProtector = null,
         Action<MainWindow>? assertWindow = null,
         IIcmpMonitor? icmpMonitor = null,
-        IWgbPollingService? wgbPollingService = null)
+        IWgbPollingService? wgbPollingService = null,
+        IWgbCommandClient? wgbCommandClient = null,
+        ISettingsFileStore? settingsFileStore = null)
     {
         Exception? exception = null;
         using var completed = new ManualResetEventSlim();
@@ -572,10 +741,10 @@ public sealed class MainWindowStartupTests
                 SynchronizationContext.SetSynchronizationContext(
                     new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
                 window = new MainWindow(
-                    new FakeSettingsFileStore(options),
+                    settingsFileStore ?? new FakeSettingsFileStore(options),
                     new WgbDiagnosticsOptionsValidator(),
                     icmpMonitor ?? new FakeIcmpMonitor(),
-                    new FakeWgbCommandClient(),
+                    wgbCommandClient ?? new FakeWgbCommandClient(),
                     new WgbAssociationParser(),
                     wgbPollingService ?? new FakeWgbPollingService(),
                     new FakeDiagnosticSessionLogger(),
@@ -684,6 +853,8 @@ public sealed class MainWindowStartupTests
 
         public string SettingsPath => @"C:\Users\test\AppData\Local\WgbDiagnostics\appsettings.json";
 
+        public WgbDiagnosticsOptions? SavedOptions { get; private set; }
+
         public SettingsLoadResult Load()
         {
             return new SettingsLoadResult(_options, []);
@@ -691,6 +862,7 @@ public sealed class MainWindowStartupTests
 
         public void Save(WgbDiagnosticsOptions options)
         {
+            SavedOptions = options;
         }
 
         public string ResolveLogDirectory(string logDirectory)
@@ -716,6 +888,19 @@ public sealed class MainWindowStartupTests
             WgbCommandRequest request,
             CancellationToken cancellationToken)
         {
+            return Task.FromResult("");
+        }
+    }
+
+    private sealed class TrackingWgbCommandClient : IWgbCommandClient
+    {
+        public int CallCount { get; private set; }
+
+        public Task<string> ExecuteCommandAsync(
+            WgbCommandRequest request,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
             return Task.FromResult("");
         }
     }

@@ -11,7 +11,7 @@ The installer build publishes the WPF app as a .NET 8 self-contained `win-x64` a
 Expected artifact:
 
 ```text
-artifacts\installer\WgbDiagnostics-0.1.27-win-x64.msi
+artifacts\installer\WgbDiagnostics-0.1.28-win-x64.msi
 ```
 
 ## Installation
@@ -19,25 +19,25 @@ artifacts\installer\WgbDiagnostics-0.1.27-win-x64.msi
 Interactive installation:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.27-win-x64.msi
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.28-win-x64.msi
 ```
 
 Silent installation with desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.27-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.28-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
 ```
 
 Silent installation without desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.27-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.28-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
 Silent uninstallation using the MSI:
 
 ```powershell
-msiexec /x artifacts\installer\WgbDiagnostics-0.1.27-win-x64.msi /qn /norestart
+msiexec /x artifacts\installer\WgbDiagnostics-0.1.28-win-x64.msi /qn /norestart
 ```
 
 ## Installed locations
@@ -55,7 +55,7 @@ Per-user configuration and writable data:
 %LocalAppData%\WgbDiagnostics\Logs\
 ```
 
-The MSI does not include credentials and the application does not require administrator privileges for normal use. Installation is per-machine and may require elevation.
+The MSI does not include credentials and the application does not require administrator privileges for normal use. Installation is per-machine and may require elevation. Fresh installations leave the WGB address, SSH username, passwords, and ping target blank. Existing per-user settings remain in place during MSI upgrades.
 
 ## ICMP timing semantics
 
@@ -104,3 +104,8 @@ Realtime graph interaction:
 13. With Follow latest roam enabled, trigger a roam and confirm its details and marker become selected without changing graph zoom. Let the marker leave the graph window and confirm the details and Dashboard Last event remain. Use Previous or Next and confirm following turns off and the historical selection remains when another roam arrives.
 14. Save SSH and enable passwords with the save checkboxes, reload settings, then use Forget buttons and confirm no cleartext appears in `%LocalAppData%\WgbDiagnostics\appsettings.json` or session logs.
 15. Confirm the Dashboard remains readable at 1366x768.
+
+## License
+
+WGB Diagnostics is licensed under the Apache License, Version 2.0.
+See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.

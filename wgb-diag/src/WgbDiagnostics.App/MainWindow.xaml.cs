@@ -152,17 +152,16 @@ public partial class MainWindow : Window
         }
 
         var diagnosticsOptions = ReadSettingsFromForm(out var formErrors);
-        var errors = formErrors.Concat(_validator.Validate(diagnosticsOptions)).ToList();
-        if (string.IsNullOrWhiteSpace(diagnosticsOptions.PingTarget))
-        {
-            errors.Insert(0, new ConfigurationValidationError(
-                "Ping target",
-                "Ping target not configured. Configure a target in Settings before starting monitoring."));
-        }
+        var errors = formErrors
+            .Concat(_validator.Validate(diagnosticsOptions))
+            .Concat(ValidateMonitoringConfiguration(diagnosticsOptions))
+            .ToList();
 
         if (errors.Count > 0)
         {
-            ShowErrors(errors);
+            ShowErrors(
+                errors,
+                "Monitoring cannot start. Configure the listed settings before starting monitoring.");
             return;
         }
 
@@ -408,12 +407,10 @@ public partial class MainWindow : Window
 
     private void AboutButton_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show(
-            this,
-            _versionInfo.FormatAboutText(),
-            $"About {_versionInfo.ProductName}",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        new AboutWindow(_versionInfo)
+        {
+            Owner = this
+        }.ShowDialog();
     }
 
     private void OpenLogFolderButton_Click(object sender, RoutedEventArgs e)
@@ -1325,11 +1322,15 @@ public partial class MainWindow : Window
         return 0;
     }
 
-    private void ShowErrors(IReadOnlyList<ConfigurationValidationError> errors)
+    private void ShowErrors(
+        IReadOnlyList<ConfigurationValidationError> errors,
+        string? statusMessage = null)
     {
-        ValidationErrorsListBox.ItemsSource = errors.Select(error => $"{error.Field}: {error.Message}");
+        ValidationErrorsListBox.ItemsSource = errors.Select(error => string.IsNullOrWhiteSpace(error.Field)
+            ? error.Message
+            : $"{error.Field}: {error.Message}");
         ValidationErrorsListBox.Visibility = Visibility.Visible;
-        StatusTextBlock.Text = $"{errors.Count} settings issue(s) found.";
+        StatusTextBlock.Text = statusMessage ?? $"{errors.Count} settings issue(s) found.";
         MainTabControl.SelectedIndex = 1;
     }
 
@@ -1343,10 +1344,15 @@ public partial class MainWindow : Window
     private WgbPollingOptions? ReadWgbPollingOptionsFromForm()
     {
         var diagnosticsOptions = ReadSettingsFromForm(out var formErrors);
-        var errors = formErrors.Concat(_validator.Validate(diagnosticsOptions)).ToList();
+        var errors = formErrors
+            .Concat(_validator.Validate(diagnosticsOptions))
+            .Concat(ValidateWgbConfiguration(diagnosticsOptions))
+            .ToList();
         if (errors.Count > 0)
         {
-            ShowErrors(errors);
+            ShowErrors(
+                errors,
+                "WGB connection cannot start. Configure the listed WGB settings before testing.");
             return null;
         }
 
@@ -1354,6 +1360,44 @@ public partial class MainWindow : Window
             diagnosticsOptions,
             SshPasswordBox.Password,
             EnablePasswordBox.Password);
+    }
+
+    private IReadOnlyList<ConfigurationValidationError> ValidateMonitoringConfiguration(
+        WgbDiagnosticsOptions options)
+    {
+        var errors = new List<ConfigurationValidationError>();
+        AddMissingConfigurationError(errors, options.PingTarget, "Ping target not configured.");
+        errors.AddRange(ValidateWgbConfiguration(options));
+        return errors;
+    }
+
+    private IReadOnlyList<ConfigurationValidationError> ValidateWgbConfiguration(
+        WgbDiagnosticsOptions options)
+    {
+        var errors = new List<ConfigurationValidationError>();
+        AddMissingConfigurationError(errors, options.WgbAddress, "WGB address not configured.");
+        AddMissingConfigurationError(errors, options.SshUsername, "WGB username not configured.");
+        AddMissingConfigurationError(errors, SshPasswordBox.Password, "WGB password not configured.");
+        if (options.UseEnableMode)
+        {
+            AddMissingConfigurationError(
+                errors,
+                EnablePasswordBox.Password,
+                "WGB enable password not configured.");
+        }
+
+        return errors;
+    }
+
+    private static void AddMissingConfigurationError(
+        ICollection<ConfigurationValidationError> errors,
+        string? value,
+        string message)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            errors.Add(new ConfigurationValidationError("", message));
+        }
     }
 
     private ValueTask HandleMonitorEventAsync(IcmpMonitorEvent monitorEvent)
