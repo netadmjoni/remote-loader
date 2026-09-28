@@ -187,6 +187,19 @@ public sealed class DiagnosticsRealtimeModelTests
     }
 
     [Fact]
+    public void WgbPollsReuseParsedRatesForDataRatePoints()
+    {
+        var model = new DiagnosticsRealtimeModel();
+
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, seconds: 0, Association("ap-a", "11:11:11:11:11:11", "11", "0", "-61")));
+
+        var point = Assert.Single(model.Snapshot(BaseTimestamp).DataRatePoints);
+
+        Assert.Equal(144.4, point.TxMbps);
+        Assert.Equal(130.0, point.RxMbps);
+    }
+
+    [Fact]
     public void RssiWindowTrimmingUsesGraphVisibleMinutes()
     {
         var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(

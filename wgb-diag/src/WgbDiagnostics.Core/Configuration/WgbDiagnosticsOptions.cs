@@ -54,6 +54,10 @@ public sealed class WgbDiagnosticsOptions
 
     public int GraphVisibleMinutes { get; set; } = 10;
 
+    public bool ShowDataRateGraph { get; set; }
+
+    public bool EnableEngineeringDebugViews { get; set; }
+
     public string LiveDiagnosticsLayout { get; set; } = "Auto";
 
     public string IcmpDisplayMode { get; set; } = "AllPings";

@@ -9,6 +9,7 @@ using WgbDiagnostics.App.Configuration;
 using WgbDiagnostics.Core.Configuration;
 using WgbDiagnostics.Core.Logging;
 using WgbDiagnostics.Core.Monitoring;
+using WgbDiagnostics.Core.Realtime;
 using WgbDiagnostics.Core.Wgb;
 using Xunit;
 
@@ -35,6 +36,93 @@ public sealed class MainWindowStartupTests
                 Assert.False(dashboardAdvanced.IsExpanded);
                 var selectedRoam = GetPrivateControl<Expander>(window, "SelectedRoamExpander");
                 Assert.False(selectedRoam.IsExpanded);
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<TabItem>(window, "RawParserTabItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<WpfPlot>(window, "DataRatePlot").Visibility);
+            });
+    }
+
+    [Fact]
+    public void EngineeringAndDataRateViewsLoadOnlyWhenEnabled()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.ShowDataRateGraph = true;
+        options.EnableEngineeringDebugViews = true;
+
+        ConstructMainWindowOnSta(
+            options,
+            assertWindow: window =>
+            {
+                window.Width = window.MinWidth;
+                window.Height = window.MinHeight;
+                window.Show();
+                window.UpdateLayout();
+
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<TabItem>(window, "RawParserTabItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<RadioButton>(window, "RawPingViewRadioButton").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<WpfPlot>(window, "DataRatePlot").Visibility);
+                Assert.True(GetPrivateControl<RowDefinition>(window, "DataRateGraphRow").Height.Value > 0);
+                Assert.True(GetPrivateControl<WpfPlot>(window, "DataRatePlot").ActualHeight >= 130);
+            });
+    }
+
+    [Fact]
+    public void DashboardShowsSingleOkAndCurrentWgbRate()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.PingTarget = "10.194.240.10";
+
+        ConstructMainWindowOnSta(
+            options,
+            assertWindow: window =>
+            {
+                var timestamp = DateTimeOffset.UtcNow;
+                var realtime = GetPrivateControl<DiagnosticsRealtimeModel>(window, "_realtimeModel");
+                realtime.Apply(new IcmpMonitorEvent(
+                    IcmpMonitorEventKind.PingReply,
+                    timestamp,
+                    SequenceNumber: 1,
+                    RoundTripTime: TimeSpan.FromMilliseconds(17),
+                    ConsecutiveLoss: 0,
+                    EstimatedLossWindowMilliseconds: 0,
+                    Message: null));
+                realtime.Apply(new WgbPollEvent(
+                    WgbPollEventKind.PollSucceeded,
+                    timestamp,
+                    new WgbAssociationSnapshot(
+                        "AP-221",
+                        "aa:bb:cc",
+                        "44",
+                        "-68",
+                        "2",
+                        TxRate: "144.4 Mbps",
+                        RxRate: "130.0 Mbps",
+                        WgbIp: "192.168.1.20",
+                        AssociationStatus: "Associated",
+                        CandidateApName: null,
+                        CandidateBssid: null),
+                    ParseResult: null,
+                    RawOutput: null,
+                    Message: null));
+
+                var render = typeof(MainWindow).GetMethod(
+                    "RenderRealtimeGraph",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(render);
+                render!.Invoke(window, [true, false]);
+
+                Assert.Equal("OK", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
+                Assert.Equal("", GetPrivateControl<TextBlock>(window, "DashboardStatusSymbolTextBlock").Text);
+                Assert.Equal("144.4/130.0 Mbps", GetPrivateControl<TextBlock>(window, "DashboardRateTextBlock").Text);
             });
     }
 

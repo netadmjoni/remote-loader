@@ -18,16 +18,20 @@ public sealed class PingEventViewModelTests
     }
 
     [Fact]
-    public void EventViewShowsLastOkBeforeLossStart()
+    public void EventViewShowsOperatorFriendlyLossStart()
     {
         var model = new PingEventViewModel();
         model.Apply(Ping(IcmpMonitorEventKind.PingReply, sequence: 1, rttMilliseconds: 7), PingEventViewMode.Event);
 
         var rows = model.Apply(Ping(IcmpMonitorEventKind.LossStarted, sequence: 2, consecutiveLoss: 1, lossWindow: 100), PingEventViewMode.Event);
 
-        Assert.Equal(new[] { "LAST_OK", "LOSS_START" }, rows.Select(row => row.EventName).ToArray());
-        Assert.Equal(PingEventSeverity.Success, rows[0].Severity);
-        Assert.Equal(PingEventSeverity.Warning, rows[1].Severity);
+        var row = Assert.Single(rows);
+        Assert.Equal("LOSS_START", row.EventName);
+        Assert.Equal(PingEventSeverity.Warning, row.Severity);
+        Assert.Contains("Packet loss", row.Text);
+        Assert.Contains("1 probe", row.Text);
+        Assert.Contains("100 ms", row.Text);
+        Assert.DoesNotContain("#", row.Text);
     }
 
     [Fact]
@@ -36,13 +40,18 @@ public sealed class PingEventViewModelTests
         var model = new PingEventViewModel();
 
         var alert = Assert.Single(model.Apply(Ping(IcmpMonitorEventKind.AlertThresholdReached, sequence: 3, consecutiveLoss: 3, lossWindow: 600), PingEventViewMode.Event));
-        var recovery = Assert.Single(model.Apply(Ping(IcmpMonitorEventKind.Recovered, sequence: 4, rttMilliseconds: 9), PingEventViewMode.Event));
+        var recovery = Assert.Single(model.Apply(Ping(IcmpMonitorEventKind.Recovered, sequence: 4, rttMilliseconds: 9, lossWindow: 600), PingEventViewMode.Event));
         var error = Assert.Single(model.Apply(Ping(IcmpMonitorEventKind.Error, sequence: 5, consecutiveLoss: 1, lossWindow: 100, message: "probe failed"), PingEventViewMode.Event));
 
         Assert.Equal(PingEventSeverity.Critical, alert.Severity);
         Assert.Equal("ALERT", alert.EventName);
+        Assert.Contains("Interruption", alert.Text);
+        Assert.Contains("3 probes", alert.Text);
+        Assert.Contains("600 ms", alert.Text);
         Assert.Equal(PingEventSeverity.Success, recovery.Severity);
         Assert.Equal("RECOVER", recovery.EventName);
+        Assert.Contains("Connectivity restored", recovery.Text);
+        Assert.Contains("outage 600 ms", recovery.Text);
         Assert.Equal(PingEventSeverity.Critical, error.Severity);
         Assert.Equal("ERROR", error.EventName);
     }
@@ -74,7 +83,11 @@ public sealed class PingEventViewModelTests
         var eventRow = Assert.Single(model.Apply(lateTimeout, PingEventViewMode.Event));
         Assert.Equal("PACKET_LOSS", eventRow.EventName);
         Assert.Equal(PingEventSeverity.Warning, eventRow.Severity);
-        Assert.Contains("late_timeout state_unchanged", eventRow.Text);
+        Assert.Contains("Packet loss", eventRow.Text);
+        Assert.Contains("1 probe", eventRow.Text);
+        Assert.DoesNotContain("late_timeout", eventRow.Text);
+        Assert.DoesNotContain("state_unchanged", eventRow.Text);
+        Assert.DoesNotContain("#52", eventRow.Text);
         Assert.DoesNotContain("ignored_for_state", eventRow.Text);
 
         var row = Assert.Single(model.Apply(lateTimeout, PingEventViewMode.Raw));

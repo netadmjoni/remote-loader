@@ -24,8 +24,6 @@ public sealed record PingEventRow(
 
 public sealed class PingEventViewModel
 {
-    private IcmpMonitorEvent? _lastOk;
-
     public IReadOnlyList<PingEventRow> Apply(
         IcmpMonitorEvent monitorEvent,
         PingEventViewMode mode)
@@ -40,19 +38,14 @@ public sealed class PingEventViewModel
         switch (monitorEvent.Kind)
         {
             case IcmpMonitorEventKind.PingReply:
-                if (monitorEvent.AppliedToState)
-                {
-                    _lastOk = monitorEvent;
-                }
-
                 break;
 
             case IcmpMonitorEventKind.PacketLoss:
-                rows.Add(CreateEventRow(
+                rows.Add(CreateOperatorEventRow(
                     monitorEvent,
                     PingEventSeverity.Warning,
                     "PACKET_LOSS",
-                    $"PACKET_LOSS #{monitorEvent.SequenceNumber} late_timeout state_unchanged"));
+                    $"Packet loss  {FormatProbeCount(1)}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
                 break;
 
             case IcmpMonitorEventKind.LossStarted:
@@ -61,16 +54,11 @@ public sealed class PingEventViewModel
                     break;
                 }
 
-                if (_lastOk is not null && mode == PingEventViewMode.Event)
-                {
-                    rows.Add(CreateLastOkRow(_lastOk));
-                }
-
-                rows.Add(CreateEventRow(
+                rows.Add(CreateOperatorEventRow(
                     monitorEvent,
                     PingEventSeverity.Warning,
                     "LOSS_START",
-                    $"LOSS_START #{monitorEvent.SequenceNumber} window={monitorEvent.EstimatedLossWindowMilliseconds} ms"));
+                    $"Packet loss  {FormatProbeCount(Math.Max(1, monitorEvent.ConsecutiveLoss))}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
                 break;
 
             case IcmpMonitorEventKind.AlertThresholdReached:
@@ -79,11 +67,11 @@ public sealed class PingEventViewModel
                     break;
                 }
 
-                rows.Add(CreateEventRow(
+                rows.Add(CreateOperatorEventRow(
                     monitorEvent,
                     PingEventSeverity.Critical,
                     "ALERT",
-                    $"ALERT #{monitorEvent.SequenceNumber} outage={monitorEvent.EstimatedLossWindowMilliseconds} ms"));
+                    $"Interruption  {FormatProbeCount(Math.Max(1, monitorEvent.ConsecutiveLoss))}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
                 break;
 
             case IcmpMonitorEventKind.Recovered:
@@ -92,11 +80,11 @@ public sealed class PingEventViewModel
                     break;
                 }
 
-                rows.Add(CreateEventRow(
+                rows.Add(CreateOperatorEventRow(
                     monitorEvent,
                     PingEventSeverity.Success,
                     "RECOVER",
-                    $"RECOVER #{monitorEvent.SequenceNumber} outage={monitorEvent.EstimatedLossWindowMilliseconds} ms rtt={FormatRoundTripTime(monitorEvent.RoundTripTime)}"));
+                    $"Connectivity restored  outage {FormatDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
                 break;
 
             case IcmpMonitorEventKind.Error:
@@ -105,11 +93,11 @@ public sealed class PingEventViewModel
                     break;
                 }
 
-                rows.Add(CreateEventRow(
+                rows.Add(CreateOperatorEventRow(
                     monitorEvent,
                     PingEventSeverity.Critical,
                     "ERROR",
-                    $"ERROR #{monitorEvent.SequenceNumber} {monitorEvent.Message}"));
+                    $"Monitoring error{(string.IsNullOrWhiteSpace(monitorEvent.Message) ? "" : $"  {monitorEvent.Message.Trim()}")}"));
                 break;
         }
 
@@ -120,16 +108,6 @@ public sealed class PingEventViewModel
 
     public void Reset()
     {
-        _lastOk = null;
-    }
-
-    private static PingEventRow CreateLastOkRow(IcmpMonitorEvent monitorEvent)
-    {
-        return CreateEventRow(
-            monitorEvent,
-            PingEventSeverity.Success,
-            "LAST_OK",
-            $"LAST_OK #{monitorEvent.SequenceNumber} rtt={FormatRoundTripTime(monitorEvent.RoundTripTime)}");
     }
 
     private static PingEventRow CreateRawRow(IcmpMonitorEvent monitorEvent)
@@ -159,6 +137,37 @@ public sealed class PingEventViewModel
             severity,
             eventName,
             $"{timestamp} {detail}");
+    }
+
+    private static PingEventRow CreateOperatorEventRow(
+        IcmpMonitorEvent monitorEvent,
+        PingEventSeverity severity,
+        string eventName,
+        string detail)
+    {
+        var timestamp = monitorEvent.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        return new PingEventRow(
+            monitorEvent.Timestamp,
+            severity,
+            eventName,
+            $"{timestamp}  {detail}");
+    }
+
+    private static string FormatProbeCount(int count)
+    {
+        return $"{count} {(count == 1 ? "probe" : "probes")}";
+    }
+
+    private static string FormatLossDuration(int milliseconds)
+    {
+        return milliseconds > 0 ? $"  {FormatDuration(milliseconds)}" : "";
+    }
+
+    private static string FormatDuration(int milliseconds)
+    {
+        return milliseconds < 1000
+            ? $"{milliseconds} ms"
+            : $"{milliseconds / 1000d:0.0} s";
     }
 
     private static string FormatRoundTripTime(TimeSpan? roundTripTime)

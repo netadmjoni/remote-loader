@@ -65,6 +65,9 @@ public partial class MainWindow : Window
     private GraphAxisLimits? _panStartLimits;
     private bool _graphDragStarted;
     private DiagnosticsRealtimeSnapshot? _latestRealtimeSnapshot;
+    private bool _engineeringDebugViewsEnabled;
+    private bool _normalWgbAssociationShown;
+    private bool _normalWgbFailureActive;
 
     public MainWindow(
         ISettingsFileStore settingsFileStore,
@@ -92,6 +95,7 @@ public partial class MainWindow : Window
         UpdatePingViewModeFromControls(clearEvents: false);
         InitializeRttPlot();
         InitializeRssiPlot();
+        InitializeDataRatePlot();
         ConfigureRealtimePlotInteractions();
         _graphRefreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -118,6 +122,8 @@ public partial class MainWindow : Window
             _settingsFileStore.Save(options);
             Title = options.ApplicationName;
             ApplyGraphOptionsFromSettings(options, resetToAutoscroll: _graphViewport.State == GraphViewportState.Autoscroll);
+            ApplyLiveDiagnosticsOptions(options);
+            ApplyDataRateGraphVisibility(options.ShowDataRateGraph);
             UpdateIcmpTimingText(options);
             ShowStatus($"Settings saved to {_settingsFileStore.SettingsPath}.");
         }
@@ -638,12 +644,14 @@ public partial class MainWindow : Window
             _liveDiagnosticsLayout = ParseLiveDiagnosticsLayout(options.LiveDiagnosticsLayout);
             _liveDiagnosticsSplitterPosition = Math.Clamp(options.LiveDiagnosticsSplitterPosition, 0.1, 0.9);
             _liveDiagnostics.ConfigureBufferSize(options.EventDisplayBufferSize);
+            _liveDiagnostics.SetEngineeringDebugEnabled(options.EnableEngineeringDebugViews);
             _liveDiagnostics.SetIcmpDisplayMode(ParseLiveIcmpDisplayMode(options.IcmpDisplayMode));
             _liveDiagnostics.SetWgbDisplayMode(ParseLiveWgbDisplayMode(options.WgbDisplayMode));
             SetComboBoxSelectionByTag(LiveDiagnosticsLayoutComboBox, _liveDiagnosticsLayout.ToString());
             SetComboBoxSelectionByTag(LiveIcmpDisplayModeComboBox, _liveDiagnostics.IcmpDisplayMode.ToString());
             SetComboBoxSelectionByTag(LiveWgbDisplayModeComboBox, _liveDiagnostics.WgbDisplayMode.ToString());
             LiveDiagnosticsBufferTextBlock.Text = $"Display buffer: {_liveDiagnostics.BufferSize:0} rows";
+            ApplyEngineeringDebugVisibility(options.EnableEngineeringDebugViews);
             ApplyLiveDiagnosticsLayout();
             RefreshLiveIcmpRows(newEventCount: 0, force: true);
             RefreshLiveWgbRows(newEventCount: 0, force: true);
@@ -1079,6 +1087,8 @@ public partial class MainWindow : Window
         DailyRotationEnabledCheckBox.IsChecked = options.DailyRotationEnabled;
         RetentionDaysTextBox.Text = options.RetentionDays.ToString(CultureInfo.InvariantCulture);
         GraphVisibleMinutesTextBox.Text = options.GraphVisibleMinutes.ToString(CultureInfo.InvariantCulture);
+        ShowDataRateGraphCheckBox.IsChecked = options.ShowDataRateGraph;
+        EnableEngineeringDebugViewsCheckBox.IsChecked = options.EnableEngineeringDebugViews;
         WgbLogCollectionEnabledCheckBox.IsChecked = options.WgbLogCollectionEnabled;
         TftpTimeoutSecondsTextBox.Text = options.TftpTimeoutSeconds.ToString(CultureInfo.InvariantCulture);
         MaximumReceivedFileSizeBytesTextBox.Text = options.MaximumReceivedFileSizeBytes.ToString(CultureInfo.InvariantCulture);
@@ -1086,6 +1096,7 @@ public partial class MainWindow : Window
         UpdateIcmpTimingText(options);
         ApplyGraphOptionsFromSettings(options, resetToAutoscroll: _graphViewport.State == GraphViewportState.Autoscroll);
         ApplyLiveDiagnosticsOptions(options);
+        ApplyDataRateGraphVisibility(options.ShowDataRateGraph);
         RefreshIcmpConfigurationState();
         return credentialErrors;
     }
@@ -1133,6 +1144,8 @@ public partial class MainWindow : Window
             DailyRotationEnabled = DailyRotationEnabledCheckBox.IsChecked == true,
             RetentionDays = ReadInt(RetentionDaysTextBox, "Retention days", errors),
             GraphVisibleMinutes = ReadInt(GraphVisibleMinutesTextBox, "Graph visible minutes", errors),
+            ShowDataRateGraph = ShowDataRateGraphCheckBox.IsChecked == true,
+            EnableEngineeringDebugViews = EnableEngineeringDebugViewsCheckBox.IsChecked == true,
             LiveDiagnosticsLayout = _liveDiagnosticsLayout.ToString(),
             IcmpDisplayMode = _liveDiagnostics.IcmpDisplayMode.ToString(),
             WgbDisplayMode = _liveDiagnostics.WgbDisplayMode.ToString(),
@@ -1444,8 +1457,11 @@ public partial class MainWindow : Window
 
     private void ApplyWgbPollEvent(WgbPollEvent pollEvent)
     {
-        WgbEventsListBox.Items.Insert(0, FormatWgbPollEvent(pollEvent));
-        TrimItems(WgbEventsListBox, MaxDiagnosticItems);
+        if (TryFormatVisibleWgbEvent(pollEvent, out var visibleEvent))
+        {
+            WgbEventsListBox.Items.Insert(0, visibleEvent);
+            TrimItems(WgbEventsListBox, MaxDiagnosticItems);
+        }
         var liveResult = _liveDiagnostics.Apply(pollEvent);
         if (liveResult.Accepted)
         {
@@ -1699,6 +1715,8 @@ public partial class MainWindow : Window
             _liveIcmpViewport.JumpToLatest();
             _liveWgbViewport.JumpToLatest();
             _liveWgbStaleEventActive = false;
+            _normalWgbAssociationShown = false;
+            _normalWgbFailureActive = false;
             UpdateLivePanelIndicators();
         }
 
@@ -1760,10 +1778,25 @@ public partial class MainWindow : Window
         RssiPlot.Refresh();
     }
 
+    private void InitializeDataRatePlot()
+    {
+        var plot = DataRatePlot.Plot;
+        plot.Clear();
+        plot.Title("WGB data rate (Tx / Rx)");
+        plot.XLabel("Local time");
+        plot.YLabel("Mbps");
+        plot.Axes.DateTimeTicksBottom();
+        plot.Axes.SetLimitsY(0, 100);
+        var now = DateTimeOffset.UtcNow;
+        plot.Axes.SetLimitsX(ToPlotX(now - _graphViewport.VisibleWindow), ToPlotX(now));
+        DataRatePlot.Refresh();
+    }
+
     private void ConfigureRealtimePlotInteractions()
     {
         ConfigureRealtimePlotInteraction(RttPlot);
         ConfigureRealtimePlotInteraction(RssiPlot);
+        ConfigureRealtimePlotInteraction(DataRatePlot);
     }
 
     private void ConfigureRealtimePlotInteraction(WpfPlot plot)
@@ -2009,6 +2042,10 @@ public partial class MainWindow : Window
         {
             RenderRttPlot(snapshot, renderPlan.XLimits);
             RenderRssiPlot(snapshot, renderPlan.XLimits);
+            if (DataRatePlot.Visibility == Visibility.Visible)
+            {
+                RenderDataRatePlot(snapshot, renderPlan.XLimits);
+            }
         }
 
         var markerSummary = FormatMarkerSummary(snapshot.RoamEvents, _roamMarkerSelection.SelectedMarkerId);
@@ -2199,6 +2236,59 @@ public partial class MainWindow : Window
         RssiPlot.Refresh();
     }
 
+    private void RenderDataRatePlot(
+        DiagnosticsRealtimeSnapshot snapshot,
+        GraphAxisLimits xLimits)
+    {
+        var plot = DataRatePlot.Plot;
+        plot.Clear();
+        plot.Title("WGB data rate (Tx / Rx)");
+        plot.XLabel("Local time");
+        plot.YLabel("Mbps");
+        plot.Axes.DateTimeTicksBottom();
+
+        var txPoints = snapshot.DataRatePoints.Where(point => point.TxMbps is not null).ToArray();
+        var rxPoints = snapshot.DataRatePoints.Where(point => point.RxMbps is not null).ToArray();
+        if (txPoints.Length > 0)
+        {
+            var tx = plot.Add.Scatter(
+                txPoints.Select(point => ToPlotX(point.Timestamp)).ToArray(),
+                txPoints.Select(point => point.TxMbps!.Value).ToArray(),
+                Colors.DodgerBlue);
+            tx.LegendText = "Tx";
+            tx.LineWidth = 1.5f;
+            tx.MarkerSize = 3;
+        }
+
+        if (rxPoints.Length > 0)
+        {
+            var rx = plot.Add.Scatter(
+                rxPoints.Select(point => ToPlotX(point.Timestamp)).ToArray(),
+                rxPoints.Select(point => point.RxMbps!.Value).ToArray(),
+                Colors.DarkOrange);
+            rx.LegendText = "Rx";
+            rx.LineWidth = 1.5f;
+            rx.MarkerSize = 3;
+        }
+
+        var maximumRate = snapshot.DataRatePoints
+            .SelectMany(point => new[] { point.TxMbps, point.RxMbps })
+            .Where(rate => rate is not null)
+            .Select(rate => rate!.Value)
+            .DefaultIfEmpty(10)
+            .Max();
+        plot.Axes.SetLimitsY(0, Math.Max(10, Math.Ceiling(maximumRate * 1.2)));
+
+        foreach (var marker in SelectRenderedMarkers(snapshot.Markers)
+                     .Where(marker => marker.Kind == RealtimeGraphMarkerKind.ParentApChanged))
+        {
+            AddGraphMarkerLine(plot, marker);
+        }
+
+        ApplyGraphXLimits(plot, xLimits);
+        DataRatePlot.Refresh();
+    }
+
     private static void ApplyGraphXLimits(Plot plot, GraphAxisLimits limits)
     {
         plot.Axes.SetLimitsX(limits.MinimumX, limits.MaximumX);
@@ -2214,8 +2304,13 @@ public partial class MainWindow : Window
     {
         ApplyGraphXLimits(RttPlot.Plot, limits);
         ApplyGraphXLimits(RssiPlot.Plot, limits);
+        ApplyGraphXLimits(DataRatePlot.Plot, limits);
         RttPlot.Refresh();
         RssiPlot.Refresh();
+        if (DataRatePlot.Visibility == Visibility.Visible)
+        {
+            DataRatePlot.Refresh();
+        }
     }
 
     private void UpdateGraphStatus(GraphRenderPlan? plan = null)
@@ -2254,6 +2349,7 @@ public partial class MainWindow : Window
         ChannelTextBlock.Text = FormatNullable(snapshot.WgbStatus.Channel);
         RadioIdTextBlock.Text = FormatNullable(snapshot.WgbStatus.RadioId);
         RssiTextBlock.Text = WgbAssociationSample.FormatRssi(snapshot.WgbStatus.Rssi);
+        DashboardRateTextBlock.Text = FormatDataRatePair(snapshot.WgbStatus.TxRate, snapshot.WgbStatus.RxRate);
         TxRateTextBlock.Text = FormatNullable(snapshot.WgbStatus.TxRate);
         RxRateTextBlock.Text = FormatNullable(snapshot.WgbStatus.RxRate);
         GraphParentApTextBlock.Text = FormatNullable(snapshot.WgbStatus.ParentApName);
@@ -2316,7 +2412,7 @@ public partial class MainWindow : Window
         };
         DashboardStatusSymbolTextBlock.Text = dashboardState switch
         {
-            "OK" => "OK",
+            "OK" => "",
             "DEGRADED" => "!",
             "OUTAGE" => "X",
             _ => "-"
@@ -2521,6 +2617,131 @@ public partial class MainWindow : Window
             : $" {pollEvent.Message}";
 
         return $"{timestamp} {pollEvent.Kind}{association}{roam}{message}";
+    }
+
+    private bool TryFormatVisibleWgbEvent(WgbPollEvent pollEvent, out string text)
+    {
+        if (_engineeringDebugViewsEnabled)
+        {
+            text = FormatWgbPollEvent(pollEvent);
+            return true;
+        }
+
+        var timestamp = pollEvent.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        var association = pollEvent.Association;
+        switch (pollEvent.Kind)
+        {
+            case WgbPollEventKind.PollSucceeded when association is not null:
+                if (!_normalWgbAssociationShown)
+                {
+                    _normalWgbAssociationShown = true;
+                    _normalWgbFailureActive = false;
+                    text = $"{timestamp}  Initial association  {FormatWgbAssociationSummary(association)}";
+                    return true;
+                }
+
+                if (_normalWgbFailureActive)
+                {
+                    _normalWgbFailureActive = false;
+                    text = $"{timestamp}  Polling recovered  {FormatWgbAssociationSummary(association)}";
+                    return true;
+                }
+
+                break;
+
+            case WgbPollEventKind.ParentApChanged:
+                text = $"{timestamp}  Roam  {FormatNullable(pollEvent.OldParentApName)} -> {FormatNullable(pollEvent.NewParentApName)}  "
+                    + $"ch {FormatNullable(pollEvent.OldChannel)} -> {FormatNullable(pollEvent.NewChannel)}  "
+                    + $"radio {FormatNullable(pollEvent.OldRadioId)} -> {FormatNullable(pollEvent.NewRadioId)}  "
+                    + $"RSSI {WgbAssociationSample.FormatRssi(pollEvent.OldRssi)} -> {WgbAssociationSample.FormatRssi(pollEvent.NewRssi)}";
+                return true;
+
+            case WgbPollEventKind.PollFailed:
+            case WgbPollEventKind.SshConnectFailed:
+            case WgbPollEventKind.PromptResyncFailed:
+            case WgbPollEventKind.SessionLost:
+            case WgbPollEventKind.Disconnected:
+                if (_normalWgbFailureActive)
+                {
+                    break;
+                }
+
+                _normalWgbFailureActive = true;
+                text = $"{timestamp}  WGB unreachable{FormatReason(pollEvent.Message)}";
+                return true;
+
+            case WgbPollEventKind.ReconnectScheduled:
+                text = $"{timestamp}  Reconnecting{FormatReason(pollEvent.Message)}";
+                return true;
+
+            case WgbPollEventKind.Connected when _normalWgbAssociationShown:
+                text = $"{timestamp}  WGB reconnected";
+                return true;
+
+            case WgbPollEventKind.CommandWarning:
+                text = $"{timestamp}  Warning{FormatReason(pollEvent.Message)}";
+                return true;
+        }
+
+        text = "";
+        return false;
+    }
+
+    private static string FormatWgbAssociationSummary(WgbAssociationSnapshot association)
+    {
+        return $"AP {FormatNullable(association.ParentApName)}  ch {FormatNullable(association.Channel)}  "
+            + $"R{FormatNullable(association.RadioId)}  RSSI {WgbAssociationSample.FormatRssi(association.Rssi)}  "
+            + $"rate {FormatDataRatePair(association.TxRate, association.RxRate)}";
+    }
+
+    private static string FormatReason(string? message)
+    {
+        return string.IsNullOrWhiteSpace(message) ? "" : $"  {message.Trim()}";
+    }
+
+    private static string FormatDataRatePair(string? txRate, string? rxRate)
+    {
+        var tx = WgbAssociationSample.NormalizeRateMbps(txRate);
+        var rx = WgbAssociationSample.NormalizeRateMbps(rxRate);
+        return string.IsNullOrWhiteSpace(tx) && string.IsNullOrWhiteSpace(rx)
+            ? "-"
+            : $"{(string.IsNullOrWhiteSpace(tx) ? "-" : tx)}/{(string.IsNullOrWhiteSpace(rx) ? "-" : rx)} Mbps";
+    }
+
+    private void ApplyDataRateGraphVisibility(bool visible)
+    {
+        DataRateGraphRow.Height = visible ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        DataRatePlot.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        RenderRealtimeGraph(force: true, resetZoom: false);
+    }
+
+    private void ApplyEngineeringDebugVisibility(bool enabled)
+    {
+        var settingChanged = _engineeringDebugViewsEnabled != enabled;
+        _engineeringDebugViewsEnabled = enabled;
+        var visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        RawParserTabItem.Visibility = visibility;
+        RawPingViewRadioButton.Visibility = visibility;
+        LiveIcmpDisplayModeLabel.Visibility = visibility;
+        LiveIcmpDisplayModeComboBox.Visibility = visibility;
+        LiveWgbDisplayModeLabel.Visibility = visibility;
+        LiveWgbDisplayModeComboBox.Visibility = visibility;
+
+        if (!enabled)
+        {
+            PingEventViewRadioButton.IsChecked = true;
+            if (RawParserTabItem.IsSelected)
+            {
+                DiagnosticsTabControl.SelectedIndex = 0;
+            }
+        }
+
+        if (settingChanged)
+        {
+            WgbEventsListBox.Items.Clear();
+        }
+
+        UpdatePingViewModeFromControls(clearEvents: false);
     }
 
     private static string FormatSshTestResult(

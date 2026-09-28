@@ -10,6 +10,7 @@ public sealed class DiagnosticsRealtimeModel
     private readonly object _sync = new();
     private readonly List<PingObservation> _pingObservations = [];
     private readonly List<RssiObservation> _rssiObservations = [];
+    private readonly List<DataRateObservation> _dataRateObservations = [];
     private readonly List<RealtimeGraphMarker> _markers = [];
     private readonly List<RealtimeRoamEvent> _roamEvents = [];
     private RealtimeGraphOptions _options;
@@ -38,6 +39,7 @@ public sealed class DiagnosticsRealtimeModel
         {
             _pingObservations.Clear();
             _rssiObservations.Clear();
+            _dataRateObservations.Clear();
             _markers.Clear();
             _roamEvents.Clear();
         }
@@ -49,6 +51,7 @@ public sealed class DiagnosticsRealtimeModel
         {
             _pingObservations.Clear();
             _rssiObservations.Clear();
+            _dataRateObservations.Clear();
             _markers.Clear();
             _roamEvents.Clear();
             _pingStatus = PingRealtimeStatus.Empty;
@@ -126,6 +129,16 @@ public sealed class DiagnosticsRealtimeModel
                 InsertOrReplaceRssiObservation(new RssiObservation(pollEvent.Timestamp, rssi));
             }
 
+            if (pollEvent.Association is not null && ShouldRecordRssi(pollEvent.Kind))
+            {
+                var txRate = TryParseDataRate(pollEvent.Association.TxRate);
+                var rxRate = TryParseDataRate(pollEvent.Association.RxRate);
+                if (txRate is not null || rxRate is not null)
+                {
+                    InsertOrReplaceDataRateObservation(new DataRateObservation(pollEvent.Timestamp, txRate, rxRate));
+                }
+            }
+
             if (pollEvent.Kind == WgbPollEventKind.ParentApChanged)
             {
                 var markerId = CreateRoamMarkerId(pollEvent);
@@ -200,6 +213,7 @@ public sealed class DiagnosticsRealtimeModel
             return new DiagnosticsRealtimeSnapshot(
                 BuildSegments(),
                 BuildRssiPoints(),
+                BuildDataRatePoints(),
                 _markers.ToArray(),
                 _roamEvents.ToArray(),
                 _pingStatus with { Runtime = runtime },
@@ -347,6 +361,14 @@ public sealed class DiagnosticsRealtimeModel
         return WgbRssiNormalizer.TryParseDbm(value, out rssi);
     }
 
+    private static double? TryParseDataRate(string? value)
+    {
+        var normalized = WgbAssociationSample.NormalizeRateMbps(value);
+        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var rate)
+            ? rate
+            : null;
+    }
+
     private void NoteTimestamp(DateTimeOffset timestamp)
     {
         _startedAt ??= timestamp;
@@ -387,6 +409,18 @@ public sealed class DiagnosticsRealtimeModel
         }
 
         _rssiObservations.Insert(~index, observation);
+    }
+
+    private void InsertOrReplaceDataRateObservation(DataRateObservation observation)
+    {
+        var index = _dataRateObservations.BinarySearch(observation, DataRateObservationTimestampComparer.Instance);
+        if (index >= 0)
+        {
+            _dataRateObservations[index] = observation;
+            return;
+        }
+
+        _dataRateObservations.Insert(~index, observation);
     }
 
     private void InsertMarker(RealtimeGraphMarker marker)
@@ -488,16 +522,25 @@ public sealed class DiagnosticsRealtimeModel
             .ToArray();
     }
 
+    private IReadOnlyList<DataRateGraphPoint> BuildDataRatePoints()
+    {
+        return _dataRateObservations
+            .Select(observation => new DataRateGraphPoint(observation.Timestamp, observation.TxMbps, observation.RxMbps))
+            .ToArray();
+    }
+
     private void TrimToWindow(DateTimeOffset anchor)
     {
         var cutoff = anchor - _options.VisibleWindow;
         _pingObservations.RemoveAll(observation => observation.Timestamp < cutoff);
         _rssiObservations.RemoveAll(observation => observation.Timestamp < cutoff);
+        _dataRateObservations.RemoveAll(observation => observation.Timestamp < cutoff);
         _markers.RemoveAll(marker => marker.Timestamp < cutoff);
         _roamEvents.RemoveAll(roamEvent => roamEvent.Timestamp < cutoff);
 
         TrimOldest(_pingObservations, _options.MaxDataPoints);
         TrimOldest(_rssiObservations, _options.MaxDataPoints);
+        TrimOldest(_dataRateObservations, _options.MaxDataPoints);
         TrimOldest(_markers, _options.MaxMarkers);
         TrimOldest(_roamEvents, _options.MaxMarkers);
     }
@@ -530,6 +573,8 @@ public sealed class DiagnosticsRealtimeModel
 
     private sealed record RssiObservation(DateTimeOffset Timestamp, double Rssi);
 
+    private sealed record DataRateObservation(DateTimeOffset Timestamp, double? TxMbps, double? RxMbps);
+
     private sealed class PingObservationTimestampComparer : IComparer<PingObservation>
     {
         public static PingObservationTimestampComparer Instance { get; } = new();
@@ -545,6 +590,16 @@ public sealed class DiagnosticsRealtimeModel
         public static RssiObservationTimestampComparer Instance { get; } = new();
 
         public int Compare(RssiObservation? x, RssiObservation? y)
+        {
+            return Nullable.Compare(x?.Timestamp, y?.Timestamp);
+        }
+    }
+
+    private sealed class DataRateObservationTimestampComparer : IComparer<DataRateObservation>
+    {
+        public static DataRateObservationTimestampComparer Instance { get; } = new();
+
+        public int Compare(DataRateObservation? x, DataRateObservation? y)
         {
             return Nullable.Compare(x?.Timestamp, y?.Timestamp);
         }
@@ -597,6 +652,7 @@ public sealed record RealtimeGraphOptions(
 public sealed record DiagnosticsRealtimeSnapshot(
     IReadOnlyList<RttGraphSegment> RttSegments,
     IReadOnlyList<RssiGraphPoint> RssiPoints,
+    IReadOnlyList<DataRateGraphPoint> DataRatePoints,
     IReadOnlyList<RealtimeGraphMarker> Markers,
     IReadOnlyList<RealtimeRoamEvent> RoamEvents,
     PingRealtimeStatus PingStatus,
@@ -608,6 +664,8 @@ public sealed record RttGraphSegment(IReadOnlyList<RttGraphPoint> Points);
 public sealed record RttGraphPoint(DateTimeOffset Timestamp, double RoundTripTimeMilliseconds);
 
 public sealed record RssiGraphPoint(DateTimeOffset Timestamp, double Rssi);
+
+public sealed record DataRateGraphPoint(DateTimeOffset Timestamp, double? TxMbps, double? RxMbps);
 
 public sealed record PingRealtimeStatus(
     TimeSpan? CurrentRoundTripTime,

@@ -37,6 +37,8 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         Assert.Equal("AllSamples", options.WgbDisplayMode);
         Assert.Equal(0.5, options.LiveDiagnosticsSplitterPosition);
         Assert.Equal(10000, options.EventDisplayBufferSize);
+        Assert.False(options.ShowDataRateGraph);
+        Assert.False(options.EnableEngineeringDebugViews);
     }
 
     [Fact]

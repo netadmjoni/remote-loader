@@ -145,6 +145,85 @@ public sealed class LiveDiagnosticsPresentationModelTests
     }
 
     [Fact]
+    public void NormalDiagnosticsHideInternalIcmpAndWgbLifecycleDetails()
+    {
+        var model = new LiveDiagnosticsPresentationModel();
+        model.SetEngineeringDebugEnabled(false);
+        model.SetIcmpDisplayMode(LiveIcmpDisplayMode.AllPings);
+        model.SetWgbDisplayMode(LiveWgbDisplayMode.AllSamples);
+
+        model.Apply(Ping(IcmpMonitorEventKind.PingReply, sequence: 1, milliseconds: 0, rttMilliseconds: 7));
+        model.Apply(Ping(
+            IcmpMonitorEventKind.PacketLoss,
+            sequence: 2,
+            milliseconds: 100,
+            message: "late_timeout state_unchanged",
+            appliedToState: false,
+            ignoredReason: "OutOfOrderTimeoutAfterNewerSuccess"));
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 0));
+        model.Apply(Wgb(WgbPollEventKind.CommandStarted, milliseconds: 10, message: "running"));
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 100));
+        model.Apply(Wgb(
+            WgbPollEventKind.PollSucceeded,
+            milliseconds: 200,
+            parentAp: "AP-223",
+            bssid: "dd:ee:ff",
+            channel: "48",
+            radioId: "2",
+            rssi: "-55"));
+
+        var snapshot = model.Snapshot();
+        var icmp = Assert.Single(snapshot.IcmpRows);
+
+        Assert.Equal("PACKET LOSS", icmp.EventName);
+        Assert.Contains("Packet loss", icmp.Text);
+        Assert.DoesNotContain("seq=", icmp.Text);
+        Assert.DoesNotContain("late_timeout", icmp.Text);
+        Assert.Equal(new[] { "SAMPLE", "ROAM" }, snapshot.WgbRows.Select(row => row.EventName).ToArray());
+        Assert.DoesNotContain(snapshot.WgbRows, row => row.Text.Contains("running", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NormalWgbDiagnosticsCollapseOneFailureAndShowActualRecovery()
+    {
+        var model = new LiveDiagnosticsPresentationModel();
+        model.SetEngineeringDebugEnabled(false);
+
+        model.Apply(WgbFailure(WgbPollEventKind.Connected, milliseconds: 0, message: null));
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 10));
+        model.Apply(WgbFailure(WgbPollEventKind.SessionLost, milliseconds: 20, "socket closed"));
+        model.Apply(WgbFailure(WgbPollEventKind.Disconnected, milliseconds: 30, "socket closed"));
+        model.Apply(WgbFailure(WgbPollEventKind.PollFailed, milliseconds: 40, "SSH timeout"));
+        model.Apply(WgbFailure(WgbPollEventKind.ReconnectScheduled, milliseconds: 50, "retry in 2 seconds"));
+        model.Apply(WgbFailure(WgbPollEventKind.ReconnectScheduled, milliseconds: 60, "retry in 5 seconds"));
+        model.Apply(WgbFailure(WgbPollEventKind.Connected, milliseconds: 70, message: null));
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 80));
+
+        var rows = model.Snapshot().WgbRows;
+
+        Assert.Equal(
+            new[] { "SAMPLE", "DISCONNECTED", "RECONNECTING", "RECONNECTED" },
+            rows.Select(row => row.EventName).ToArray());
+    }
+
+    [Fact]
+    public void NormalWgbDiagnosticsShowPollingRecoveryWithoutConnectEvent()
+    {
+        var model = new LiveDiagnosticsPresentationModel();
+        model.SetEngineeringDebugEnabled(false);
+
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 0));
+        model.Apply(WgbFailure(WgbPollEventKind.PollFailed, milliseconds: 10, "command failed"));
+        model.Apply(WgbFailure(WgbPollEventKind.PollFailed, milliseconds: 20, "command failed"));
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 30));
+
+        var rows = model.Snapshot().WgbRows;
+
+        Assert.Equal(new[] { "SAMPLE", "POLL_FAILED", "RECOVERED" }, rows.Select(row => row.EventName).ToArray());
+        Assert.Contains("POLLING RECOVERED", rows[^1].Text);
+    }
+
+    [Fact]
     public void TenSuccessesOneLateTimeoutAndMoreSuccessesShowsOneEventOnlyPacketLoss()
     {
         var model = new LiveDiagnosticsPresentationModel();

@@ -199,10 +199,11 @@
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="2*" />
-                <ColumnDefinition Width="0.85*" />
-                <ColumnDefinition Width="0.85*" />
-                <ColumnDefinition Width="0.85*" />
-                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="0.8*" />
+                <ColumnDefinition Width="0.8*" />
+                <ColumnDefinition Width="0.7*" />
+                <ColumnDefinition Width="1.5*" />
+                <ColumnDefinition Width="2.5*" />
               </Grid.ColumnDefinitions>
               <DockPanel Grid.Column="0" Margin="0,0,16,0" LastChildFill="True">
                 <TextBlock DockPanel.Dock="Left" Text="AP:" FontWeight="SemiBold" Margin="0,0,5,0" />
@@ -220,7 +221,11 @@
                 <TextBlock DockPanel.Dock="Left" Text="Radio:" FontWeight="SemiBold" Margin="0,0,5,0" />
                 <TextBlock x:Name="RadioIdTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
               </DockPanel>
-              <DockPanel Grid.Column="4" LastChildFill="True">
+              <DockPanel Grid.Column="4" Margin="0,0,16,0" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Text="Rate:" FontWeight="SemiBold" Margin="0,0,5,0" />
+                <TextBlock x:Name="DashboardRateTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+              <DockPanel Grid.Column="5" LastChildFill="True">
                 <TextBlock DockPanel.Dock="Left" Text="Last event:" FontWeight="SemiBold" Margin="0,0,5,0" />
                 <TextBlock x:Name="DashboardLatestEventTextBlock" Text="-" TextTrimming="CharacterEllipsis" />
               </DockPanel>
@@ -299,6 +304,7 @@
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
               <RowDefinition Height="*" />
+              <RowDefinition x:Name="DataRateGraphRow" Height="0" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -329,9 +335,15 @@
 
             <sp:WpfPlot Grid.Row="2"
                         x:Name="RssiPlot"
-                        MinHeight="130" />
+                        MinHeight="130"
+                        Margin="0,0,0,8" />
 
-            <Expander Grid.Row="3"
+            <sp:WpfPlot Grid.Row="3"
+                        x:Name="DataRatePlot"
+                        MinHeight="130"
+                        Visibility="Collapsed" />
+
+            <Expander Grid.Row="4"
                       x:Name="SelectedRoamExpander"
                       IsExpanded="False"
                       Margin="0,4,0,0">
@@ -487,7 +499,7 @@
                       <ComboBoxItem Content="Horizontal" Tag="Horizontal" />
                       <ComboBoxItem Content="Vertical" Tag="Vertical" />
                     </ComboBox>
-                    <TextBlock Text="ICMP:" VerticalAlignment="Center" Margin="0,0,6,8" FontWeight="SemiBold" />
+                    <TextBlock x:Name="LiveIcmpDisplayModeLabel" Text="ICMP:" VerticalAlignment="Center" Margin="0,0,6,8" FontWeight="SemiBold" />
                     <ComboBox x:Name="LiveIcmpDisplayModeComboBox"
                               Width="136"
                               MinHeight="28"
@@ -497,7 +509,7 @@
                       <ComboBoxItem Content="Events only" Tag="EventsOnly" />
                       <ComboBoxItem Content="Loss window" Tag="LossWindow" />
                     </ComboBox>
-                    <TextBlock Text="WGB:" VerticalAlignment="Center" Margin="0,0,6,8" FontWeight="SemiBold" />
+                    <TextBlock x:Name="LiveWgbDisplayModeLabel" Text="WGB:" VerticalAlignment="Center" Margin="0,0,6,8" FontWeight="SemiBold" />
                     <ComboBox x:Name="LiveWgbDisplayModeComboBox"
                               Width="136"
                               MinHeight="28"
@@ -698,7 +710,7 @@
               </Grid>
             </TabItem>
 
-            <TabItem Header="Raw / Parser">
+            <TabItem x:Name="RawParserTabItem" Header="Raw / Parser">
               <Grid Margin="8">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -762,6 +774,8 @@
                 <ColumnDefinition Width="520" />
               </Grid.ColumnDefinitions>
               <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -879,6 +893,12 @@
 
               <TextBlock Grid.Row="25" Grid.Column="0" Text="Maximum received file size bytes" Style="{StaticResource FieldLabelStyle}" />
               <TextBox Grid.Row="25" Grid.Column="1" x:Name="MaximumReceivedFileSizeBytesTextBox" />
+
+              <TextBlock Grid.Row="26" Grid.Column="0" Text="Show data rate graph" Style="{StaticResource FieldLabelStyle}" />
+              <CheckBox Grid.Row="26" Grid.Column="1" x:Name="ShowDataRateGraphCheckBox" Margin="0,0,0,8" />
+
+              <TextBlock Grid.Row="27" Grid.Column="0" Text="Enable engineering/debug views" Style="{StaticResource FieldLabelStyle}" />
+              <CheckBox Grid.Row="27" Grid.Column="1" x:Name="EnableEngineeringDebugViewsCheckBox" Margin="0,0,0,8" />
             </Grid>
           </ScrollViewer>
 

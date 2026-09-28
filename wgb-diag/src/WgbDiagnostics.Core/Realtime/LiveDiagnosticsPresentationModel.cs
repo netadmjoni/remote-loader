@@ -137,6 +137,8 @@ public sealed class LiveDiagnosticsPresentationModel
 
     public LiveWgbDisplayMode WgbDisplayMode { get; private set; } = LiveWgbDisplayMode.AllSamples;
 
+    public bool EngineeringDebugEnabled { get; private set; } = true;
+
     public void Reset()
     {
         _icmpEvents.Clear();
@@ -161,6 +163,11 @@ public sealed class LiveDiagnosticsPresentationModel
     public void SetWgbDisplayMode(LiveWgbDisplayMode mode)
     {
         WgbDisplayMode = mode;
+    }
+
+    public void SetEngineeringDebugEnabled(bool enabled)
+    {
+        EngineeringDebugEnabled = enabled;
     }
 
     public LiveDiagnosticsApplyResult Apply(IcmpMonitorEvent monitorEvent)
@@ -248,12 +255,74 @@ public sealed class LiveDiagnosticsPresentationModel
 
     private IReadOnlyList<LiveDiagnosticsRow> BuildIcmpRows()
     {
+        if (!EngineeringDebugEnabled)
+        {
+            return BuildOperatorIcmpRows();
+        }
+
         return IcmpDisplayMode switch
         {
             LiveIcmpDisplayMode.EventsOnly => BuildIcmpEventsOnlyRows(),
             LiveIcmpDisplayMode.LossWindow => BuildIcmpLossWindowRows(),
             _ => _icmpEvents.Select(sourceEvent => CreateIcmpRow(sourceEvent)).ToArray()
         };
+    }
+
+    private IReadOnlyList<LiveDiagnosticsRow> BuildOperatorIcmpRows()
+    {
+        var rows = new List<LiveDiagnosticsRow>();
+        foreach (var sourceEvent in _icmpEvents)
+        {
+            var monitorEvent = sourceEvent.Event;
+            if (monitorEvent.Kind == IcmpMonitorEventKind.PacketLoss)
+            {
+                rows.Add(CreateOperatorIcmpRow(
+                    sourceEvent,
+                    "PACKET LOSS",
+                    LiveDiagnosticsSeverity.Warning,
+                    $"Packet loss  {FormatProbeCount(1)}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
+                continue;
+            }
+
+            if (!monitorEvent.AppliedToState)
+            {
+                continue;
+            }
+
+            switch (monitorEvent.Kind)
+            {
+                case IcmpMonitorEventKind.LossStarted:
+                    rows.Add(CreateOperatorIcmpRow(
+                        sourceEvent,
+                        "PACKET LOSS",
+                        LiveDiagnosticsSeverity.Warning,
+                        $"Packet loss  {FormatProbeCount(Math.Max(1, monitorEvent.ConsecutiveLoss))}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
+                    break;
+                case IcmpMonitorEventKind.AlertThresholdReached:
+                    rows.Add(CreateOperatorIcmpRow(
+                        sourceEvent,
+                        "INTERRUPTION",
+                        LiveDiagnosticsSeverity.Critical,
+                        $"Interruption  {FormatProbeCount(Math.Max(1, monitorEvent.ConsecutiveLoss))}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
+                    break;
+                case IcmpMonitorEventKind.Recovered:
+                    rows.Add(CreateOperatorIcmpRow(
+                        sourceEvent,
+                        "RESTORED",
+                        LiveDiagnosticsSeverity.Success,
+                        $"Connectivity restored  outage {FormatDuration(TimeSpan.FromMilliseconds(monitorEvent.EstimatedLossWindowMilliseconds))}"));
+                    break;
+                case IcmpMonitorEventKind.Error:
+                    rows.Add(CreateOperatorIcmpRow(
+                        sourceEvent,
+                        "ERROR",
+                        LiveDiagnosticsSeverity.Critical,
+                        $"Monitoring error{(string.IsNullOrWhiteSpace(monitorEvent.Message) ? "" : $"  {monitorEvent.Message.Trim()}")}"));
+                    break;
+            }
+        }
+
+        return rows;
     }
 
     private IReadOnlyList<LiveDiagnosticsRow> BuildIcmpEventsOnlyRows()
@@ -390,12 +459,16 @@ public sealed class LiveDiagnosticsPresentationModel
         var rows = new List<LiveDiagnosticsRow>();
         var parserFailures = new Dictionary<string, ParserFailureThrottleState>(StringComparer.OrdinalIgnoreCase);
         WgbAssociationSample? previousSample = null;
+        var displayMode = EngineeringDebugEnabled ? WgbDisplayMode : LiveWgbDisplayMode.ChangesOnly;
+        var normalFailureActive = false;
+        var normalReconnectShown = false;
+        var normalHasAssociation = false;
 
         foreach (var sourceEvent in _wgbEvents)
         {
             if (sourceEvent.PollEvent is null)
             {
-                AddSyntheticWgbRow(rows, sourceEvent);
+                AddSyntheticWgbRow(rows, sourceEvent, displayMode);
                 continue;
             }
 
@@ -404,33 +477,82 @@ public sealed class LiveDiagnosticsPresentationModel
             {
                 var transition = previousSample is not null && sample.HasRoamTransitionFrom(previousSample);
                 var operatorChange = previousSample is null || sample.HasOperatorChangeFrom(previousSample);
+                var recoveredWithoutConnectEvent = !EngineeringDebugEnabled
+                    && normalFailureActive
+                    && normalHasAssociation;
 
-                if (transition && previousSample is not null && WgbDisplayMode != LiveWgbDisplayMode.ChangesOnly)
+                if (transition && previousSample is not null && displayMode != LiveWgbDisplayMode.ChangesOnly)
                 {
                     rows.Add(CreateWgbRoamRow(sourceEvent, previousSample, sample, subOrder: 0));
                 }
 
-                if (WgbDisplayMode == LiveWgbDisplayMode.AllSamples
-                    || (WgbDisplayMode == LiveWgbDisplayMode.ChangesOnly && operatorChange))
+                if (displayMode == LiveWgbDisplayMode.AllSamples
+                    || (displayMode == LiveWgbDisplayMode.ChangesOnly
+                        && operatorChange
+                        && (EngineeringDebugEnabled || !transition)))
                 {
                     rows.Add(CreateWgbSampleRow(
                         sourceEvent,
                         sample,
-                        transition && WgbDisplayMode == LiveWgbDisplayMode.AllSamples ? 1 : 0));
+                        transition && displayMode == LiveWgbDisplayMode.AllSamples ? 1 : 0));
                 }
 
-                if (transition && previousSample is not null && WgbDisplayMode == LiveWgbDisplayMode.ChangesOnly)
+                if (transition && previousSample is not null && displayMode == LiveWgbDisplayMode.ChangesOnly)
                 {
                     rows.Add(CreateWgbRoamRow(sourceEvent, previousSample, sample, subOrder: 1));
                 }
 
+                if (recoveredWithoutConnectEvent)
+                {
+                    rows.Add(CreateWgbRecoveryRow(sourceEvent, sample));
+                }
+
                 previousSample = sample;
+                normalHasAssociation = true;
+                normalFailureActive = false;
+                normalReconnectShown = false;
                 continue;
             }
 
             var stateRow = CreateWgbStateRow(sourceEvent, parserFailures);
             if (stateRow is not null)
             {
+                if (!EngineeringDebugEnabled)
+                {
+                    switch (stateRow.EventName)
+                    {
+                        case "POLL_FAILED":
+                        case "PARSER_FAILURE":
+                        case "DISCONNECTED":
+                            if (normalFailureActive)
+                            {
+                                continue;
+                            }
+
+                            normalFailureActive = true;
+                            normalReconnectShown = false;
+                            break;
+                        case "RECONNECTING":
+                            if (normalReconnectShown)
+                            {
+                                continue;
+                            }
+
+                            normalFailureActive = true;
+                            normalReconnectShown = true;
+                            break;
+                        case "RECONNECTED":
+                            if (!normalFailureActive || !normalHasAssociation)
+                            {
+                                continue;
+                            }
+
+                            normalFailureActive = false;
+                            normalReconnectShown = false;
+                            break;
+                    }
+                }
+
                 rows.Add(stateRow);
             }
         }
@@ -512,11 +634,27 @@ public sealed class LiveDiagnosticsPresentationModel
             string.Join("  ", parts));
     }
 
+    private static LiveDiagnosticsRow CreateOperatorIcmpRow(
+        SequencedIcmpEvent sourceEvent,
+        string eventName,
+        LiveDiagnosticsSeverity severity,
+        string detail)
+    {
+        return new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100,
+            sourceEvent.Timestamp,
+            LiveDiagnosticsPanel.Icmp,
+            eventName,
+            severity,
+            $"{sourceEvent.Timestamp.ToLocalTime():HH:mm:ss}  {detail}");
+    }
+
     private void AddSyntheticWgbRow(
         ICollection<LiveDiagnosticsRow> rows,
-        SequencedWgbEvent sourceEvent)
+        SequencedWgbEvent sourceEvent,
+        LiveWgbDisplayMode displayMode)
     {
-        if (WgbDisplayMode == LiveWgbDisplayMode.RoamsOnly)
+        if (displayMode == LiveWgbDisplayMode.RoamsOnly)
         {
             return;
         }
@@ -542,6 +680,19 @@ public sealed class LiveDiagnosticsPresentationModel
             "SAMPLE",
             LiveDiagnosticsSeverity.Success,
             sample.FormatOperatorRow());
+    }
+
+    private static LiveDiagnosticsRow CreateWgbRecoveryRow(
+        SequencedWgbEvent sourceEvent,
+        WgbAssociationSample sample)
+    {
+        return new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100 + 2,
+            sample.Timestamp,
+            LiveDiagnosticsPanel.Wgb,
+            "RECOVERED",
+            LiveDiagnosticsSeverity.Success,
+            $"{FormatTime(sample.Timestamp)} POLLING RECOVERED AP={sample.ParentAp} RSSI={WgbAssociationSample.FormatRssi(sample.Rssi)}");
     }
 
     private LiveDiagnosticsRow CreateWgbRoamRow(
@@ -573,9 +724,13 @@ public sealed class LiveDiagnosticsPresentationModel
         var eventName = pollEvent.Kind switch
         {
             WgbPollEventKind.PollFailed => IsParserFailure(pollEvent) ? "PARSER_FAILURE" : "POLL_FAILED",
-            WgbPollEventKind.Disconnected or WgbPollEventKind.PromptResyncFailed => "DISCONNECTED",
+            WgbPollEventKind.Disconnected => "DISCONNECTED",
+            WgbPollEventKind.SshConnectFailed
+                or WgbPollEventKind.SessionLost
+                or WgbPollEventKind.PromptResyncFailed when !EngineeringDebugEnabled => "DISCONNECTED",
             WgbPollEventKind.ReconnectScheduled => "RECONNECTING",
             WgbPollEventKind.Connected => "RECONNECTED",
+            WgbPollEventKind.CommandWarning when !EngineeringDebugEnabled => "PARSER_WARNING",
             _ => null
         };
         if (eventName is null)
@@ -618,7 +773,7 @@ public sealed class LiveDiagnosticsPresentationModel
         var severity = eventName switch
         {
             "RECONNECTED" => LiveDiagnosticsSeverity.Success,
-            "RECONNECTING" => LiveDiagnosticsSeverity.Warning,
+            "RECONNECTING" or "PARSER_WARNING" => LiveDiagnosticsSeverity.Warning,
             _ => LiveDiagnosticsSeverity.Critical
         };
         var reason = string.IsNullOrWhiteSpace(message) ? "" : $" reason=\"{EscapeReason(message)}\"";
@@ -930,6 +1085,18 @@ public sealed class LiveDiagnosticsPresentationModel
         return duration.TotalMinutes < 1
             ? $"{duration.TotalSeconds:0.0} s"
             : duration.ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatProbeCount(int count)
+    {
+        return $"{count} {(count == 1 ? "probe" : "probes")}";
+    }
+
+    private static string FormatLossDuration(int milliseconds)
+    {
+        return milliseconds > 0
+            ? $"  {FormatDuration(TimeSpan.FromMilliseconds(milliseconds))}"
+            : "";
     }
 
     private static string FormatNullable(string? value)
