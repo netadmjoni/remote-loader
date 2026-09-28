@@ -730,7 +730,6 @@ public sealed class LiveDiagnosticsPresentationModel
                 or WgbPollEventKind.PromptResyncFailed when !EngineeringDebugEnabled => "DISCONNECTED",
             WgbPollEventKind.ReconnectScheduled => "RECONNECTING",
             WgbPollEventKind.Connected => "RECONNECTED",
-            WgbPollEventKind.CommandWarning when !EngineeringDebugEnabled => "PARSER_WARNING",
             _ => null
         };
         if (eventName is null)
@@ -773,7 +772,7 @@ public sealed class LiveDiagnosticsPresentationModel
         var severity = eventName switch
         {
             "RECONNECTED" => LiveDiagnosticsSeverity.Success,
-            "RECONNECTING" or "PARSER_WARNING" => LiveDiagnosticsSeverity.Warning,
+            "RECONNECTING" => LiveDiagnosticsSeverity.Warning,
             _ => LiveDiagnosticsSeverity.Critical
         };
         var reason = string.IsNullOrWhiteSpace(message) ? "" : $" reason=\"{EscapeReason(message)}\"";

@@ -11,7 +11,7 @@ The installer build publishes the WPF app as a .NET 8 self-contained `win-x64` a
 Expected artifact:
 
 ```text
-artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi
+artifacts\installer\WgbDiagnostics-0.1.20-win-x64.msi
 ```
 
 ## Installation
@@ -19,25 +19,25 @@ artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi
 Interactive installation:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.20-win-x64.msi
 ```
 
 Silent installation with desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.20-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
 ```
 
 Silent installation without desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.20-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
 Silent uninstallation using the MSI:
 
 ```powershell
-msiexec /x artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi /qn /norestart
+msiexec /x artifacts\installer\WgbDiagnostics-0.1.20-win-x64.msi /qn /norestart
 ```
 
 ## Installed locations
@@ -79,7 +79,7 @@ The compact Dashboard shows the current WGB Tx/Rx data rate alongside AP, RSSI, 
 
 `Follow latest roam` selects each newly detected roam in Roam Details without changing graph zoom or its visible time window. Previous roam, Next roam, or clicking a roam marker disables following so historical selection remains stable.
 
-Normal diagnostics show operator-relevant packet loss, interruption, recovery, roam, association, disconnect, reconnect, stale/healthy, and warning events. `Enable engineering/debug views` exposes raw ping details, SSH/command lifecycle events, and the Raw / Parser tab. Engineering/debug views and the data-rate graph are disabled by default.
+Normal Events / Diagnostics shows only Live diagnostics with operator-relevant packet loss, interruption, recovery, roam, association, disconnect, reconnect, stale/healthy, and real failure events. Expected parser details such as IW9167 RSSI magnitude normalization are hidden there. `Enable engineering/debug views` exposes the ICMP, WGB, Roam, and Raw / Parser tabs together with raw ping details, parser messages, and SSH/command lifecycle events. Engineering/debug views and the data-rate graph are disabled by default.
 
 ## Manual GUI regression test
 
@@ -93,8 +93,8 @@ Realtime graph interaction:
 6. Click Reset zoom and confirm the view returns to the current time window with a sensible Y-scale.
 7. Move the mouse repeatedly over all enabled graphs and confirm no labels, color blocks, selections, or duplicate markers accumulate.
 8. Cause loss/recover events and confirm the normal ICMP event view uses packet loss, interruption, and connectivity restored wording without sequence numbers or internal timeout reasons.
-9. Enable engineering/debug views, switch to raw ping view, and confirm individual probes and internal reasons are visible. Disable it and confirm Raw / Parser and raw ping controls are hidden.
-10. Trigger or load WGB roam output and confirm roam markers appear on the enabled graphs and in the roaming timeline without successful poll lifecycle noise in normal mode.
+9. Enable engineering/debug views and confirm ICMP, WGB, Roam, Raw / Parser, individual probes, and internal reasons are visible. Disable it and confirm only Live diagnostics remains.
+10. Trigger or load WGB roam output and confirm roam markers appear on the enabled graphs without successful poll lifecycle or expected RSSI-normalization messages in normal Live diagnostics.
 11. Confirm the Dashboard shows current AP, RSSI, channel, radio ID, Tx/Rx rate, and latest event.
 12. Enable the data-rate graph and confirm separate Tx and Rx lines follow the same time window, autoscroll, zoom, and pan as RTT and RSSI.
 13. With Follow latest roam enabled, trigger a roam and confirm its details and marker become selected without changing graph zoom. Use Previous or Next and confirm following turns off and the historical selection remains when another roam arrives.

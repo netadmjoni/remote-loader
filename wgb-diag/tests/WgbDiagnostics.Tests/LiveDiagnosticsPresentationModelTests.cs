@@ -162,6 +162,10 @@ public sealed class LiveDiagnosticsPresentationModelTests
             ignoredReason: "OutOfOrderTimeoutAfterNewerSuccess"));
         model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 0));
         model.Apply(Wgb(WgbPollEventKind.CommandStarted, milliseconds: 10, message: "running"));
+        model.Apply(Wgb(
+            WgbPollEventKind.CommandWarning,
+            milliseconds: 20,
+            message: "RSSI magnitude '58' normalized to -58 dBm for iw9167-wgb-v1."));
         model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 100));
         model.Apply(Wgb(
             WgbPollEventKind.PollSucceeded,
@@ -181,6 +185,8 @@ public sealed class LiveDiagnosticsPresentationModelTests
         Assert.DoesNotContain("late_timeout", icmp.Text);
         Assert.Equal(new[] { "SAMPLE", "ROAM" }, snapshot.WgbRows.Select(row => row.EventName).ToArray());
         Assert.DoesNotContain(snapshot.WgbRows, row => row.Text.Contains("running", StringComparison.Ordinal));
+        Assert.DoesNotContain(snapshot.WgbRows, row => row.Text.Contains("RSSI magnitude", StringComparison.Ordinal));
+        Assert.Equal(5, snapshot.WgbSourceEventCount);
     }
 
     [Fact]

@@ -42,6 +42,18 @@ public sealed class MainWindowStartupTests
                     GetPrivateControl<TabItem>(window, "RawParserTabItem").Visibility);
                 Assert.Equal(
                     System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<TabItem>(window, "IcmpDiagnosticsTabItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<TabItem>(window, "WgbDiagnosticsTabItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<TabItem>(window, "RoamDiagnosticsTabItem").Visibility);
+                Assert.Single(
+                    diagnosticsTabControl.Items.Cast<TabItem>()
+                        .Where(tab => tab.Visibility == System.Windows.Visibility.Visible));
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
                     GetPrivateControl<WpfPlot>(window, "DataRatePlot").Visibility);
             });
     }
@@ -67,12 +79,42 @@ public sealed class MainWindowStartupTests
                     GetPrivateControl<TabItem>(window, "RawParserTabItem").Visibility);
                 Assert.Equal(
                     System.Windows.Visibility.Visible,
+                    GetPrivateControl<TabItem>(window, "IcmpDiagnosticsTabItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<TabItem>(window, "WgbDiagnosticsTabItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<TabItem>(window, "RoamDiagnosticsTabItem").Visibility);
+                Assert.Equal(
+                    5,
+                    GetPrivateControl<TabControl>(window, "DiagnosticsTabControl").Items.Cast<TabItem>()
+                        .Count(tab => tab.Visibility == System.Windows.Visibility.Visible));
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
                     GetPrivateControl<RadioButton>(window, "RawPingViewRadioButton").Visibility);
                 Assert.Equal(
                     System.Windows.Visibility.Visible,
                     GetPrivateControl<WpfPlot>(window, "DataRatePlot").Visibility);
                 Assert.True(GetPrivateControl<RowDefinition>(window, "DataRateGraphRow").Height.Value > 0);
                 Assert.True(GetPrivateControl<WpfPlot>(window, "DataRatePlot").ActualHeight >= 130);
+
+                var applyWgbPollEvent = typeof(MainWindow).GetMethod(
+                    "ApplyWgbPollEvent",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(applyWgbPollEvent);
+                applyWgbPollEvent!.Invoke(
+                    window,
+                    [new WgbPollEvent(
+                        WgbPollEventKind.CommandWarning,
+                        DateTimeOffset.UtcNow,
+                        Association: null,
+                        ParseResult: null,
+                        RawOutput: null,
+                        Message: "RSSI magnitude '58' normalized to -58 dBm for iw9167-wgb-v1.")]);
+
+                var debugEvent = Assert.Single(GetPrivateControl<ListBox>(window, "WgbEventsListBox").Items.Cast<object>());
+                Assert.Contains("RSSI magnitude", debugEvent.ToString(), StringComparison.Ordinal);
             });
     }
 

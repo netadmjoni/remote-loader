@@ -596,7 +596,7 @@
               </Grid>
             </TabItem>
 
-            <TabItem Header="ICMP">
+            <TabItem x:Name="IcmpDiagnosticsTabItem" Header="ICMP">
               <Grid Margin="8">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -619,7 +619,7 @@
               </Grid>
             </TabItem>
 
-            <TabItem Header="WGB">
+            <TabItem x:Name="WgbDiagnosticsTabItem" Header="WGB">
               <Grid Margin="8">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -698,7 +698,7 @@
               </Grid>
             </TabItem>
 
-            <TabItem Header="Roam">
+            <TabItem x:Name="RoamDiagnosticsTabItem" Header="Roam">
               <Grid Margin="8">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />

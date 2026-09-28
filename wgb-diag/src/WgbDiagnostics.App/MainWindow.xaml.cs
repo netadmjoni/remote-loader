@@ -2721,9 +2721,6 @@ public partial class MainWindow : Window
                 text = $"{timestamp}  WGB reconnected";
                 return true;
 
-            case WgbPollEventKind.CommandWarning:
-                text = $"{timestamp}  Warning{FormatReason(pollEvent.Message)}";
-                return true;
         }
 
         text = "";
@@ -2763,6 +2760,9 @@ public partial class MainWindow : Window
         var settingChanged = _engineeringDebugViewsEnabled != enabled;
         _engineeringDebugViewsEnabled = enabled;
         var visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        IcmpDiagnosticsTabItem.Visibility = visibility;
+        WgbDiagnosticsTabItem.Visibility = visibility;
+        RoamDiagnosticsTabItem.Visibility = visibility;
         RawParserTabItem.Visibility = visibility;
         RawPingViewRadioButton.Visibility = visibility;
         LiveIcmpDisplayModeLabel.Visibility = visibility;
@@ -2773,7 +2773,7 @@ public partial class MainWindow : Window
         if (!enabled)
         {
             PingEventViewRadioButton.IsChecked = true;
-            if (RawParserTabItem.IsSelected)
+            if (DiagnosticsTabControl.SelectedIndex != 0)
             {
                 DiagnosticsTabControl.SelectedIndex = 0;
             }
