@@ -67,6 +67,21 @@ public sealed class MainWindowStartupTests
                 Assert.Equal(
                     System.Windows.Visibility.Collapsed,
                     GetPrivateControl<WpfPlot>(window, "DataRatePlot").Visibility);
+                Assert.False(GetPrivateControl<Border>(window, "AdminEngineeringSettingsPanel").IsEnabled);
+                Assert.False(GetPrivateControl<CheckBox>(window, "AdminSettingsUnlockCheckBox").IsChecked);
+                Assert.False(GetPrivateControl<Button>(window, "ResetToDefaultsButton").IsEnabled);
+                Assert.True(GetPrivateControl<CheckBox>(window, "ShowDataRateGraphCheckBox").IsEnabled);
+                Assert.Equal("5", GetPrivateControl<TextBox>(window, "GraphVisibleMinutesTextBox").Text);
+                Assert.Equal("1", GetPrivateControl<Button>(window, "GraphWindow1MinuteButton").Tag?.ToString());
+                Assert.Equal("2", GetPrivateControl<Button>(window, "GraphWindow2MinuteButton").Tag?.ToString());
+                Assert.Equal("3", GetPrivateControl<Button>(window, "GraphWindow3MinuteButton").Tag?.ToString());
+                Assert.Equal("5", GetPrivateControl<Button>(window, "GraphWindow5MinuteButton").Tag?.ToString());
+                Assert.Equal("10", GetPrivateControl<Button>(window, "GraphWindow10MinuteButton").Tag?.ToString());
+                Assert.Equal("30", GetPrivateControl<Button>(window, "GraphWindow30MinuteButton").Tag?.ToString());
+                Assert.Null(window.FindName("WgbCommandTextBox"));
+                Assert.Null(window.FindName("WgbLogCollectionEnabledCheckBox"));
+                Assert.Null(window.FindName("TftpTimeoutSecondsTextBox"));
+                Assert.Null(window.FindName("MaximumReceivedFileSizeBytesTextBox"));
             });
     }
 
@@ -133,6 +148,34 @@ public sealed class MainWindowStartupTests
 
                 var debugEvent = Assert.Single(GetPrivateControl<ListBox>(window, "WgbEventsListBox").Items.Cast<object>());
                 Assert.Contains("RSSI magnitude", debugEvent.ToString(), StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void HiddenProfileAndFutureSettingsArePreservedWhenReadingTheForm()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.WgbCommand = "show unsafe custom command";
+        options.WgbLogCollectionEnabled = true;
+        options.TftpTimeoutSeconds = 77;
+        options.MaximumReceivedFileSizeBytes = 123456;
+
+        ConstructMainWindowOnSta(
+            options,
+            assertWindow: window =>
+            {
+                var readSettings = typeof(MainWindow).GetMethod(
+                    "ReadSettingsFromForm",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(readSettings);
+
+                object?[] arguments = [null];
+                var result = Assert.IsType<WgbDiagnosticsOptions>(readSettings!.Invoke(window, arguments));
+                Assert.Empty(Assert.IsType<List<ConfigurationValidationError>>(arguments[0]));
+                Assert.Equal(WgbParserProfiles.Iw9167WgbV1PollingCommand, result.WgbCommand);
+                Assert.True(result.WgbLogCollectionEnabled);
+                Assert.Equal(77, result.TftpTimeoutSeconds);
+                Assert.Equal(123456, result.MaximumReceivedFileSizeBytes);
             });
     }
 

@@ -258,6 +258,7 @@
                   <Button x:Name="StopWgbPollingButton" Content="Stop WGB polling" Click="StopWgbPollingButton_Click" IsEnabled="False" />
                   <Button x:Name="OpenCurrentSessionButton" Content="Open current session" Click="OpenCurrentSessionButton_Click" IsEnabled="False" />
                   <Button x:Name="OpenLogFolderButton" Content="Open log folder" Click="OpenLogFolderButton_Click" />
+                  <Button x:Name="GraphWindow30MinuteButton" Content="30 min graph" Click="GraphWindowPresetButton_Click" Tag="30" />
                 </WrapPanel>
                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,8">
                   <Run Text="Current session: " FontWeight="SemiBold" />
@@ -321,11 +322,11 @@
             <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,6">
               <WrapPanel DockPanel.Dock="Left">
                 <TextBlock Text="Window:" VerticalAlignment="Center" Margin="0,0,6,4" FontWeight="SemiBold" />
-                <Button Content="1 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="1" />
-                <Button Content="5 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="5" />
-                <Button Content="10 min" MinWidth="60" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="10" />
-                <Button Content="30 min" MinWidth="60" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="30" />
-                <Button Content="60 min" MinWidth="60" Margin="0,0,10,4" Click="GraphWindowPresetButton_Click" Tag="60" />
+                <Button x:Name="GraphWindow1MinuteButton" Content="1 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="1" />
+                <Button x:Name="GraphWindow2MinuteButton" Content="2 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="2" />
+                <Button x:Name="GraphWindow3MinuteButton" Content="3 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="3" />
+                <Button x:Name="GraphWindow5MinuteButton" Content="5 min" MinWidth="54" Margin="0,0,6,4" Click="GraphWindowPresetButton_Click" Tag="5" />
+                <Button x:Name="GraphWindow10MinuteButton" Content="10 min" MinWidth="60" Margin="0,0,10,4" Click="GraphWindowPresetButton_Click" Tag="10" />
                 <Button x:Name="ClearGraphButton" Content="Clear" MinWidth="64" Margin="0,0,6,4" Click="ClearGraphButton_Click" />
                 <Button x:Name="PauseGraphButton" Content="Pause" MinWidth="72" Margin="0,0,6,4" Click="PauseGraphButton_Click" />
                 <Button x:Name="ResetZoomButton" Content="Reset zoom" MinWidth="84" Margin="0,0,6,4" Click="ResetZoomButton_Click" />
@@ -334,7 +335,7 @@
                 <TextBlock Text="Graph:" VerticalAlignment="Center" Margin="12,0,4,4" FontWeight="SemiBold" />
                 <TextBlock x:Name="GraphStatusTextBlock" Text="Autoscroll" VerticalAlignment="Center" MinWidth="88" Margin="0,0,0,4" />
                 <TextBlock Text="Window:" VerticalAlignment="Center" Margin="12,0,4,4" FontWeight="SemiBold" />
-                <TextBlock x:Name="GraphWindowTextBlock" Text="10 min" VerticalAlignment="Center" MinWidth="48" Margin="0,0,0,4" />
+                <TextBlock x:Name="GraphWindowTextBlock" Text="5 min" VerticalAlignment="Center" MinWidth="48" Margin="0,0,0,4" />
               </WrapPanel>
             </DockPanel>
 
@@ -777,12 +778,14 @@
       <TabItem Header="Settings">
         <Grid Margin="10">
           <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
 
-          <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+          <Border Grid.Row="0" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8" Background="#FAFBFC">
             <Grid MaxWidth="780" HorizontalAlignment="Left">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="240" />
@@ -792,141 +795,136 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
               </Grid.RowDefinitions>
-
-              <TextBlock Grid.Row="0" Grid.Column="0" Text="Application name" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="0" Grid.Column="1" x:Name="ApplicationNameTextBox" />
-
-              <TextBlock Grid.Row="1" Grid.Column="0" Text="WGB address" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="1" Grid.Column="1" x:Name="WgbAddressTextBox" />
-
-              <TextBlock Grid.Row="2" Grid.Column="0" Text="SSH port" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="2" Grid.Column="1" x:Name="SshPortTextBox" />
-
-              <TextBlock Grid.Row="3" Grid.Column="0" Text="SSH username" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="3" Grid.Column="1" x:Name="SshUsernameTextBox" />
-
-              <TextBlock Grid.Row="4" Grid.Column="0" Text="SSH password" Style="{StaticResource FieldLabelStyle}" />
-              <StackPanel Grid.Row="4" Grid.Column="1">
-                <PasswordBox x:Name="SshPasswordBox" />
-                <WrapPanel>
-                  <CheckBox x:Name="SaveSshPasswordCheckBox" Content="Save SSH password" Margin="0,0,16,8" />
-                  <Button x:Name="ForgetSshPasswordButton" Content="Forget SSH password" Click="ForgetSshPasswordButton_Click" MinWidth="150" />
-                </WrapPanel>
-              </StackPanel>
-
-              <TextBlock Grid.Row="5" Grid.Column="0" Text="Use enable mode" Style="{StaticResource FieldLabelStyle}" />
-              <CheckBox Grid.Row="5" Grid.Column="1" x:Name="UseEnableModeCheckBox" Margin="0,0,0,8" />
-
-              <TextBlock Grid.Row="6" Grid.Column="0" Text="Enable command" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="6" Grid.Column="1" x:Name="EnableCommandTextBox" />
-
-              <TextBlock Grid.Row="7" Grid.Column="0" Text="Enable password" Style="{StaticResource FieldLabelStyle}" />
-              <StackPanel Grid.Row="7" Grid.Column="1">
-                <PasswordBox x:Name="EnablePasswordBox" />
-                <WrapPanel>
-                  <CheckBox x:Name="SaveEnablePasswordCheckBox" Content="Save enable password" Margin="0,0,16,8" />
-                  <Button x:Name="ForgetEnablePasswordButton" Content="Forget enable password" Click="ForgetEnablePasswordButton_Click" MinWidth="164" />
-                </WrapPanel>
-              </StackPanel>
-
-              <TextBlock Grid.Row="8" Grid.Column="0" Text="WGB poll interval seconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="8" Grid.Column="1" x:Name="WgbPollIntervalSecondsTextBox" />
-
-              <TextBlock Grid.Row="9" Grid.Column="0" Text="WGB reconnect initial seconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="9" Grid.Column="1" x:Name="WgbReconnectInitialSecondsTextBox" />
-
-              <TextBlock Grid.Row="10" Grid.Column="0" Text="WGB reconnect maximum seconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="10" Grid.Column="1" x:Name="WgbReconnectMaximumSecondsTextBox" />
-
-              <TextBlock Grid.Row="11" Grid.Column="0" Text="WGB stale threshold seconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="11" Grid.Column="1" x:Name="WgbStaleAfterSecondsTextBox" />
-
-              <TextBlock Grid.Row="12" Grid.Column="0" Text="WGB command" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="12" Grid.Column="1" x:Name="WgbCommandTextBox" />
-
-              <TextBlock Grid.Row="13" Grid.Column="0" Text="Parser profile" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="13" Grid.Column="1" x:Name="ParserProfileTextBox" />
-
-              <TextBlock Grid.Row="14" Grid.Column="0" Text="Ping target" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="14" Grid.Column="1" x:Name="PingTargetTextBox" />
-
-              <TextBlock Grid.Row="15" Grid.Column="0" Text="Ping interval milliseconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="15" Grid.Column="1" x:Name="PingIntervalMillisecondsTextBox" />
-
-              <TextBlock Grid.Row="16" Grid.Column="0" Text="Ping timeout milliseconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="16" Grid.Column="1" x:Name="PingTimeoutMillisecondsTextBox" />
-
-              <TextBlock Grid.Row="17" Grid.Column="0" Text="Loss threshold milliseconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="17" Grid.Column="1" x:Name="LossThresholdMillisecondsTextBox" />
-
-              <TextBlock Grid.Row="18" Grid.Column="0" Text="Raw logging" Style="{StaticResource FieldLabelStyle}" />
-              <CheckBox Grid.Row="18" Grid.Column="1" x:Name="RawLoggingEnabledCheckBox" Margin="0,0,0,8" />
-
-              <TextBlock Grid.Row="19" Grid.Column="0" Text="Log directory" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="19" Grid.Column="1" x:Name="LogDirectoryTextBox" />
-
-              <TextBlock Grid.Row="20" Grid.Column="0" Text="Daily rotation" Style="{StaticResource FieldLabelStyle}" />
-              <CheckBox Grid.Row="20" Grid.Column="1" x:Name="DailyRotationEnabledCheckBox" Margin="0,0,0,8" />
-
-              <TextBlock Grid.Row="21" Grid.Column="0" Text="Retention days" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="21" Grid.Column="1" x:Name="RetentionDaysTextBox" />
-
-              <TextBlock Grid.Row="22" Grid.Column="0" Text="Graph visible minutes" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="22" Grid.Column="1" x:Name="GraphVisibleMinutesTextBox" />
-
-              <TextBlock Grid.Row="23" Grid.Column="0" Text="WGB log collection enabled" Style="{StaticResource FieldLabelStyle}" />
-              <CheckBox Grid.Row="23" Grid.Column="1" x:Name="WgbLogCollectionEnabledCheckBox" Margin="0,0,0,8" />
-
-              <TextBlock Grid.Row="24" Grid.Column="0" Text="TFTP timeout seconds" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="24" Grid.Column="1" x:Name="TftpTimeoutSecondsTextBox" />
-
-              <TextBlock Grid.Row="25" Grid.Column="0" Text="Maximum received file size bytes" Style="{StaticResource FieldLabelStyle}" />
-              <TextBox Grid.Row="25" Grid.Column="1" x:Name="MaximumReceivedFileSizeBytesTextBox" />
-
-              <TextBlock Grid.Row="26" Grid.Column="0" Text="Show data rate graph" Style="{StaticResource FieldLabelStyle}" />
-              <CheckBox Grid.Row="26" Grid.Column="1" x:Name="ShowDataRateGraphCheckBox" Margin="0,0,0,8" />
-
-              <TextBlock Grid.Row="27" Grid.Column="0" Text="Enable engineering/debug views" Style="{StaticResource FieldLabelStyle}" />
-              <CheckBox Grid.Row="27" Grid.Column="1" x:Name="EnableEngineeringDebugViewsCheckBox" Margin="0,0,0,8" />
+              <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Operator settings" Style="{StaticResource SectionTitleStyle}" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Show data rate graph" Style="{StaticResource FieldLabelStyle}" />
+              <CheckBox Grid.Row="1" Grid.Column="1" x:Name="ShowDataRateGraphCheckBox" Margin="0,0,0,8" />
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Default graph window minutes" Style="{StaticResource FieldLabelStyle}" />
+              <TextBox Grid.Row="2" Grid.Column="1" x:Name="GraphVisibleMinutesTextBox" />
             </Grid>
+          </Border>
+
+          <DockPanel Grid.Row="1" Margin="0,0,0,8" LastChildFill="True">
+            <CheckBox x:Name="AdminSettingsUnlockCheckBox"
+                      DockPanel.Dock="Left"
+                      Content="Unlock engineering settings"
+                      Click="AdminSettingsUnlockCheckBox_Click"
+                      Margin="0,0,16,0" />
+            <TextBlock x:Name="AdminSettingsLockStatusTextBlock"
+                       Text="Engineering settings locked"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold" />
+          </DockPanel>
+
+          <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <Border x:Name="AdminEngineeringSettingsPanel"
+                    IsEnabled="False"
+                    BorderBrush="#D8DEE6"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="10">
+              <Grid MaxWidth="780" HorizontalAlignment="Left">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="240" />
+                  <ColumnDefinition Width="520" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Admin / engineering settings" Style="{StaticResource SectionTitleStyle}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Application name" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="ApplicationNameTextBox" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="WGB address" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="WgbAddressTextBox" />
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="SSH port" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="3" Grid.Column="1" x:Name="SshPortTextBox" />
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="SSH username" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="4" Grid.Column="1" x:Name="SshUsernameTextBox" />
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="SSH password" Style="{StaticResource FieldLabelStyle}" />
+                <StackPanel Grid.Row="5" Grid.Column="1">
+                  <PasswordBox x:Name="SshPasswordBox" />
+                  <WrapPanel>
+                    <CheckBox x:Name="SaveSshPasswordCheckBox" Content="Save SSH password" Margin="0,0,16,8" />
+                    <Button x:Name="ForgetSshPasswordButton" Content="Forget SSH password" Click="ForgetSshPasswordButton_Click" MinWidth="150" />
+                  </WrapPanel>
+                </StackPanel>
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Use enable mode" Style="{StaticResource FieldLabelStyle}" />
+                <CheckBox Grid.Row="6" Grid.Column="1" x:Name="UseEnableModeCheckBox" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Enable command" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="7" Grid.Column="1" x:Name="EnableCommandTextBox" />
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="Enable password" Style="{StaticResource FieldLabelStyle}" />
+                <StackPanel Grid.Row="8" Grid.Column="1">
+                  <PasswordBox x:Name="EnablePasswordBox" />
+                  <WrapPanel>
+                    <CheckBox x:Name="SaveEnablePasswordCheckBox" Content="Save enable password" Margin="0,0,16,8" />
+                    <Button x:Name="ForgetEnablePasswordButton" Content="Forget enable password" Click="ForgetEnablePasswordButton_Click" MinWidth="164" />
+                  </WrapPanel>
+                </StackPanel>
+                <TextBlock Grid.Row="9" Grid.Column="0" Text="WGB poll interval seconds" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="9" Grid.Column="1" x:Name="WgbPollIntervalSecondsTextBox" />
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="WGB reconnect initial seconds" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="10" Grid.Column="1" x:Name="WgbReconnectInitialSecondsTextBox" />
+                <TextBlock Grid.Row="11" Grid.Column="0" Text="WGB reconnect maximum seconds" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="11" Grid.Column="1" x:Name="WgbReconnectMaximumSecondsTextBox" />
+                <TextBlock Grid.Row="12" Grid.Column="0" Text="WGB stale threshold seconds" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="12" Grid.Column="1" x:Name="WgbStaleAfterSecondsTextBox" />
+                <TextBlock Grid.Row="13" Grid.Column="0" Text="Parser profile" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="13" Grid.Column="1" x:Name="ParserProfileTextBox" />
+                <TextBlock Grid.Row="14" Grid.Column="0" Text="Ping target" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="14" Grid.Column="1" x:Name="PingTargetTextBox" />
+                <TextBlock Grid.Row="15" Grid.Column="0" Text="Ping interval milliseconds" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="15" Grid.Column="1" x:Name="PingIntervalMillisecondsTextBox" />
+                <TextBlock Grid.Row="16" Grid.Column="0" Text="Ping timeout milliseconds" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="16" Grid.Column="1" x:Name="PingTimeoutMillisecondsTextBox" />
+                <TextBlock Grid.Row="17" Grid.Column="0" Text="Loss threshold milliseconds" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="17" Grid.Column="1" x:Name="LossThresholdMillisecondsTextBox" />
+                <TextBlock Grid.Row="18" Grid.Column="0" Text="Raw logging" Style="{StaticResource FieldLabelStyle}" />
+                <CheckBox Grid.Row="18" Grid.Column="1" x:Name="RawLoggingEnabledCheckBox" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="19" Grid.Column="0" Text="Log directory" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="19" Grid.Column="1" x:Name="LogDirectoryTextBox" />
+                <TextBlock Grid.Row="20" Grid.Column="0" Text="Daily rotation" Style="{StaticResource FieldLabelStyle}" />
+                <CheckBox Grid.Row="20" Grid.Column="1" x:Name="DailyRotationEnabledCheckBox" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="21" Grid.Column="0" Text="Retention days" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="21" Grid.Column="1" x:Name="RetentionDaysTextBox" />
+                <TextBlock Grid.Row="22" Grid.Column="0" Text="Enable engineering/debug views" Style="{StaticResource FieldLabelStyle}" />
+                <CheckBox Grid.Row="22" Grid.Column="1" x:Name="EnableEngineeringDebugViewsCheckBox" Margin="0,0,0,8" />
+              </Grid>
+            </Border>
           </ScrollViewer>
 
-          <ListBox Grid.Row="1"
+          <ListBox Grid.Row="3"
                    x:Name="ValidationErrorsListBox"
                    MaxHeight="90"
                    Margin="0,8,0,8"
                    Visibility="Collapsed" />
 
-          <WrapPanel Grid.Row="2">
+          <WrapPanel Grid.Row="4">
             <Button x:Name="SaveSettingsButton" Content="Save settings" Click="SaveSettingsButton_Click" />
             <Button x:Name="ReloadSettingsButton" Content="Reload settings" Click="ReloadSettingsButton_Click" />
-            <Button x:Name="ResetToDefaultsButton" Content="Reset to defaults" Click="ResetToDefaultsButton_Click" />
+            <Button x:Name="ResetToDefaultsButton" Content="Reset to defaults" Click="ResetToDefaultsButton_Click" IsEnabled="False" />
           </WrapPanel>
         </Grid>
       </TabItem>

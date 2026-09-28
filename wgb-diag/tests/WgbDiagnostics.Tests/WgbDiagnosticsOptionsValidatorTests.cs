@@ -31,7 +31,7 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         Assert.Equal(100, options.PingIntervalMilliseconds);
         Assert.Equal(1000, options.PingTimeoutMilliseconds);
         Assert.Equal(600, options.LossThresholdMilliseconds);
-        Assert.Equal(10, options.GraphVisibleMinutes);
+        Assert.Equal(5, options.GraphVisibleMinutes);
         Assert.Equal("Auto", options.LiveDiagnosticsLayout);
         Assert.Equal("EventsOnly", options.IcmpDisplayMode);
         Assert.Equal("ChangesOnly", options.WgbDisplayMode);

@@ -30,7 +30,7 @@ public sealed record WgbPollingOptions(
             options.SshPort,
             options.SshUsername,
             password,
-            options.WgbCommand,
+            WgbParserProfiles.ResolvePollingCommand(options.ParserProfile, options.WgbCommand),
             options.ParserProfile,
             options.WgbPollIntervalSeconds,
             commandTimeoutMilliseconds ?? Math.Max(5000, options.WgbPollIntervalSeconds * 1000),

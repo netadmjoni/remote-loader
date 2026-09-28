@@ -633,7 +633,7 @@ public sealed record RealtimeGraphOptions(
     TimeSpan WgbStaleAfter)
 {
     public static RealtimeGraphOptions Default { get; } = new(
-        TimeSpan.FromMinutes(10),
+        TimeSpan.FromMinutes(5),
         MaxDataPoints: 12_000,
         MaxMarkers: 2_000,
         WgbStaleAfter: TimeSpan.FromSeconds(5));

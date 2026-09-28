@@ -1,3 +1,5 @@
+using WgbDiagnostics.Core.Wgb;
+
 namespace WgbDiagnostics.Core.Configuration;
 
 public sealed class WgbDiagnosticsOptions
@@ -32,7 +34,7 @@ public sealed class WgbDiagnosticsOptions
 
     public int WgbStaleAfterSeconds { get; set; } = 5;
 
-    public string WgbCommand { get; set; } = "show wgb dot11 associations";
+    public string WgbCommand { get; set; } = WgbParserProfiles.Iw9167WgbV1PollingCommand;
 
     public string ParserProfile { get; set; } = "iw9167-wgb-v1";
 
@@ -52,7 +54,7 @@ public sealed class WgbDiagnosticsOptions
 
     public int RetentionDays { get; set; } = 14;
 
-    public int GraphVisibleMinutes { get; set; } = 10;
+    public int GraphVisibleMinutes { get; set; } = 5;
 
     public bool ShowDataRateGraph { get; set; }
 

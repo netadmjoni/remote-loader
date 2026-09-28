@@ -67,4 +67,24 @@ public sealed class WgbDiagnosticsOptionsMigrationTests
         Assert.Equal("LossWindow", options.IcmpDisplayMode);
         Assert.Equal("RoamsOnly", options.WgbDisplayMode);
     }
+
+    [Fact]
+    public void PreviousTenMinuteDefaultMigratesOnceToFiveMinutes()
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.GraphVisibleMinutes = 10;
+
+        var changed = WgbDiagnosticsOptionsMigration.Apply(options, settingsVersion: 1);
+
+        Assert.True(changed);
+        Assert.Equal(5, options.GraphVisibleMinutes);
+
+        options.GraphVisibleMinutes = 10;
+        changed = WgbDiagnosticsOptionsMigration.Apply(
+            options,
+            WgbDiagnosticsOptionsMigration.CurrentSettingsVersion);
+
+        Assert.False(changed);
+        Assert.Equal(10, options.GraphVisibleMinutes);
+    }
 }

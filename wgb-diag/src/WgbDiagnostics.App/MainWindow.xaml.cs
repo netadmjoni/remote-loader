@@ -69,6 +69,10 @@ public partial class MainWindow : Window
     private bool _normalWgbAssociationShown;
     private bool _normalWgbFailureActive;
     private string? _latestObservedRoamMarkerId;
+    private string _internalWgbCommand = WgbParserProfiles.Iw9167WgbV1PollingCommand;
+    private bool _wgbLogCollectionEnabled;
+    private int _tftpTimeoutSeconds = 30;
+    private long _maximumReceivedFileSizeBytes = 10 * 1024 * 1024;
 
     public MainWindow(
         ISettingsFileStore settingsFileStore,
@@ -127,6 +131,7 @@ public partial class MainWindow : Window
             ApplyDataRateGraphVisibility(options.ShowDataRateGraph);
             UpdateIcmpTimingText(options);
             ShowStatus($"Settings saved to {_settingsFileStore.SettingsPath}.");
+            SetAdminSettingsUnlocked(false);
         }
         catch (IOException ex)
         {
@@ -358,6 +363,35 @@ public partial class MainWindow : Window
     private void ReloadSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         LoadSettingsFromDisk();
+    }
+
+    private void AdminSettingsUnlockCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (AdminSettingsUnlockCheckBox.IsChecked == true)
+        {
+            var result = MessageBox.Show(
+                this,
+                "Engineering settings affect live monitoring and WGB access. Unlock them for editing?",
+                "Unlock engineering settings",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes)
+            {
+                AdminSettingsUnlockCheckBox.IsChecked = false;
+            }
+        }
+
+        SetAdminSettingsUnlocked(AdminSettingsUnlockCheckBox.IsChecked == true);
+    }
+
+    private void SetAdminSettingsUnlocked(bool unlocked)
+    {
+        AdminSettingsUnlockCheckBox.IsChecked = unlocked;
+        AdminEngineeringSettingsPanel.IsEnabled = unlocked;
+        ResetToDefaultsButton.IsEnabled = unlocked;
+        AdminSettingsLockStatusTextBlock.Text = unlocked
+            ? "Engineering settings unlocked"
+            : "Engineering settings locked";
     }
 
     private void ResetToDefaultsButton_Click(object sender, RoutedEventArgs e)
@@ -1053,6 +1087,7 @@ public partial class MainWindow : Window
 
     private void LoadSettingsFromDisk()
     {
+        SetAdminSettingsUnlocked(false);
         var result = _settingsFileStore.Load();
         var credentialErrors = PopulateForm(result.Options);
 
@@ -1104,7 +1139,7 @@ public partial class MainWindow : Window
         WgbReconnectInitialSecondsTextBox.Text = options.WgbReconnectInitialSeconds.ToString(CultureInfo.InvariantCulture);
         WgbReconnectMaximumSecondsTextBox.Text = options.WgbReconnectMaximumSeconds.ToString(CultureInfo.InvariantCulture);
         WgbStaleAfterSecondsTextBox.Text = options.WgbStaleAfterSeconds.ToString(CultureInfo.InvariantCulture);
-        WgbCommandTextBox.Text = options.WgbCommand;
+        _internalWgbCommand = WgbParserProfiles.ResolvePollingCommand(options.ParserProfile, options.WgbCommand);
         ParserProfileTextBox.Text = options.ParserProfile;
         PingTargetTextBox.Text = options.PingTarget;
         PingIntervalMillisecondsTextBox.Text = options.PingIntervalMilliseconds.ToString(CultureInfo.InvariantCulture);
@@ -1117,9 +1152,9 @@ public partial class MainWindow : Window
         GraphVisibleMinutesTextBox.Text = options.GraphVisibleMinutes.ToString(CultureInfo.InvariantCulture);
         ShowDataRateGraphCheckBox.IsChecked = options.ShowDataRateGraph;
         EnableEngineeringDebugViewsCheckBox.IsChecked = options.EnableEngineeringDebugViews;
-        WgbLogCollectionEnabledCheckBox.IsChecked = options.WgbLogCollectionEnabled;
-        TftpTimeoutSecondsTextBox.Text = options.TftpTimeoutSeconds.ToString(CultureInfo.InvariantCulture);
-        MaximumReceivedFileSizeBytesTextBox.Text = options.MaximumReceivedFileSizeBytes.ToString(CultureInfo.InvariantCulture);
+        _wgbLogCollectionEnabled = options.WgbLogCollectionEnabled;
+        _tftpTimeoutSeconds = options.TftpTimeoutSeconds;
+        _maximumReceivedFileSizeBytes = options.MaximumReceivedFileSizeBytes;
         Title = options.ApplicationName;
         UpdateIcmpTimingText(options);
         ApplyGraphOptionsFromSettings(options, resetToAutoscroll: _graphViewport.State == GraphViewportState.Autoscroll);
@@ -1161,7 +1196,7 @@ public partial class MainWindow : Window
             WgbReconnectInitialSeconds = ReadInt(WgbReconnectInitialSecondsTextBox, "WGB reconnect initial", errors),
             WgbReconnectMaximumSeconds = ReadInt(WgbReconnectMaximumSecondsTextBox, "WGB reconnect maximum", errors),
             WgbStaleAfterSeconds = ReadInt(WgbStaleAfterSecondsTextBox, "WGB stale threshold", errors),
-            WgbCommand = WgbCommandTextBox.Text.Trim(),
+            WgbCommand = WgbParserProfiles.ResolvePollingCommand(ParserProfileTextBox.Text, _internalWgbCommand),
             ParserProfile = ParserProfileTextBox.Text.Trim(),
             PingTarget = PingTargetTextBox.Text.Trim(),
             PingIntervalMilliseconds = ReadInt(PingIntervalMillisecondsTextBox, "Ping interval", errors),
@@ -1179,9 +1214,9 @@ public partial class MainWindow : Window
             WgbDisplayMode = _liveDiagnostics.WgbDisplayMode.ToString(),
             LiveDiagnosticsSplitterPosition = _liveDiagnosticsSplitterPosition,
             EventDisplayBufferSize = _liveDiagnostics.BufferSize,
-            WgbLogCollectionEnabled = WgbLogCollectionEnabledCheckBox.IsChecked == true,
-            TftpTimeoutSeconds = ReadInt(TftpTimeoutSecondsTextBox, "TFTP timeout", errors),
-            MaximumReceivedFileSizeBytes = ReadLong(MaximumReceivedFileSizeBytesTextBox, "Maximum received file size", errors)
+            WgbLogCollectionEnabled = _wgbLogCollectionEnabled,
+            TftpTimeoutSeconds = _tftpTimeoutSeconds,
+            MaximumReceivedFileSizeBytes = _maximumReceivedFileSizeBytes
         };
     }
 
@@ -1272,20 +1307,6 @@ public partial class MainWindow : Window
         ICollection<ConfigurationValidationError> errors)
     {
         if (int.TryParse(textBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
-        {
-            return value;
-        }
-
-        errors.Add(new ConfigurationValidationError(field, $"{field} must be a whole number."));
-        return 0;
-    }
-
-    private static long ReadLong(
-        TextBox textBox,
-        string field,
-        ICollection<ConfigurationValidationError> errors)
-    {
-        if (long.TryParse(textBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
             return value;
         }
