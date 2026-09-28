@@ -33,8 +33,8 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         Assert.Equal(600, options.LossThresholdMilliseconds);
         Assert.Equal(10, options.GraphVisibleMinutes);
         Assert.Equal("Auto", options.LiveDiagnosticsLayout);
-        Assert.Equal("AllPings", options.IcmpDisplayMode);
-        Assert.Equal("AllSamples", options.WgbDisplayMode);
+        Assert.Equal("EventsOnly", options.IcmpDisplayMode);
+        Assert.Equal("ChangesOnly", options.WgbDisplayMode);
         Assert.Equal(0.5, options.LiveDiagnosticsSplitterPosition);
         Assert.Equal(10000, options.EventDisplayBufferSize);
         Assert.False(options.ShowDataRateGraph);

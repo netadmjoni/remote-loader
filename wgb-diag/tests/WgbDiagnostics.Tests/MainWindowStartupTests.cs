@@ -52,6 +52,18 @@ public sealed class MainWindowStartupTests
                 Assert.Single(
                     diagnosticsTabControl.Items.Cast<TabItem>()
                         .Where(tab => tab.Visibility == System.Windows.Visibility.Visible));
+                var icmpMode = GetPrivateControl<ComboBox>(window, "LiveIcmpDisplayModeComboBox");
+                var wgbMode = GetPrivateControl<ComboBox>(window, "LiveWgbDisplayModeComboBox");
+                Assert.Equal(System.Windows.Visibility.Visible, icmpMode.Visibility);
+                Assert.Equal(System.Windows.Visibility.Visible, wgbMode.Visibility);
+                Assert.Equal("EventsOnly", ((ComboBoxItem)icmpMode.SelectedItem).Tag?.ToString());
+                Assert.Equal("ChangesOnly", ((ComboBoxItem)wgbMode.SelectedItem).Tag?.ToString());
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<ComboBoxItem>(window, "LiveIcmpLossWindowComboBoxItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<ComboBoxItem>(window, "LiveWgbRoamsOnlyComboBoxItem").Visibility);
                 Assert.Equal(
                     System.Windows.Visibility.Collapsed,
                     GetPrivateControl<WpfPlot>(window, "DataRatePlot").Visibility);
@@ -93,6 +105,12 @@ public sealed class MainWindowStartupTests
                 Assert.Equal(
                     System.Windows.Visibility.Visible,
                     GetPrivateControl<RadioButton>(window, "RawPingViewRadioButton").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<ComboBoxItem>(window, "LiveIcmpLossWindowComboBoxItem").Visibility);
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<ComboBoxItem>(window, "LiveWgbRoamsOnlyComboBoxItem").Visibility);
                 Assert.Equal(
                     System.Windows.Visibility.Visible,
                     GetPrivateControl<WpfPlot>(window, "DataRatePlot").Visibility);
@@ -276,6 +294,7 @@ public sealed class MainWindowStartupTests
         options.WgbDisplayMode = "RoamsOnly";
         options.LiveDiagnosticsSplitterPosition = 0.35;
         options.EventDisplayBufferSize = 5000;
+        options.EnableEngineeringDebugViews = true;
 
         ConstructMainWindowOnSta(
             options,

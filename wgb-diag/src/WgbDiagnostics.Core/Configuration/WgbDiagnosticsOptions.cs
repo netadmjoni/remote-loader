@@ -60,9 +60,9 @@ public sealed class WgbDiagnosticsOptions
 
     public string LiveDiagnosticsLayout { get; set; } = "Auto";
 
-    public string IcmpDisplayMode { get; set; } = "AllPings";
+    public string IcmpDisplayMode { get; set; } = "EventsOnly";
 
-    public string WgbDisplayMode { get; set; } = "AllSamples";
+    public string WgbDisplayMode { get; set; } = "ChangesOnly";
 
     public double LiveDiagnosticsSplitterPosition { get; set; } = 0.5;
 

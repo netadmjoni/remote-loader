@@ -257,7 +257,9 @@ public sealed class LiveDiagnosticsPresentationModel
     {
         if (!EngineeringDebugEnabled)
         {
-            return BuildOperatorIcmpRows();
+            return IcmpDisplayMode == LiveIcmpDisplayMode.AllPings
+                ? BuildOperatorAllPingsRows()
+                : BuildOperatorIcmpRows();
         }
 
         return IcmpDisplayMode switch
@@ -268,9 +270,42 @@ public sealed class LiveDiagnosticsPresentationModel
         };
     }
 
+    private IReadOnlyList<LiveDiagnosticsRow> BuildOperatorAllPingsRows()
+    {
+        var rows = new List<LiveDiagnosticsRow>();
+        var displayedSequences = new HashSet<long>();
+
+        foreach (var sourceEvent in _icmpEvents)
+        {
+            var monitorEvent = sourceEvent.Event;
+            if (monitorEvent.Kind is IcmpMonitorEventKind.AlertThresholdReached or IcmpMonitorEventKind.Recovered
+                || !displayedSequences.Add(monitorEvent.SequenceNumber))
+            {
+                continue;
+            }
+
+            var isSuccess = monitorEvent.Kind == IcmpMonitorEventKind.PingReply;
+            var detail = isSuccess
+                ? $"OK     {FormatRoundTripTime(monitorEvent.RoundTripTime)}"
+                : "LOSS";
+            rows.Add(CreateOperatorIcmpRow(
+                sourceEvent,
+                isSuccess ? "OK" : "LOSS",
+                isSuccess ? LiveDiagnosticsSeverity.Success : LiveDiagnosticsSeverity.Warning,
+                detail));
+        }
+
+        return rows;
+    }
+
     private IReadOnlyList<LiveDiagnosticsRow> BuildOperatorIcmpRows()
     {
         var rows = new List<LiveDiagnosticsRow>();
+        var interruptionSequences = _icmpEvents
+            .Where(sourceEvent => sourceEvent.Event.Kind == IcmpMonitorEventKind.AlertThresholdReached)
+            .Select(sourceEvent => sourceEvent.Event.SequenceNumber)
+            .ToHashSet();
+
         foreach (var sourceEvent in _icmpEvents)
         {
             var monitorEvent = sourceEvent.Event;
@@ -280,7 +315,7 @@ public sealed class LiveDiagnosticsPresentationModel
                     sourceEvent,
                     "PACKET LOSS",
                     LiveDiagnosticsSeverity.Warning,
-                    $"Packet loss  {FormatProbeCount(1)}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
+                    $"Packet loss  {FormatProbeCount(1)}"));
                 continue;
             }
 
@@ -296,7 +331,14 @@ public sealed class LiveDiagnosticsPresentationModel
                         sourceEvent,
                         "PACKET LOSS",
                         LiveDiagnosticsSeverity.Warning,
-                        $"Packet loss  {FormatProbeCount(Math.Max(1, monitorEvent.ConsecutiveLoss))}{FormatLossDuration(monitorEvent.EstimatedLossWindowMilliseconds)}"));
+                        $"Packet loss  {FormatProbeCount(Math.Max(1, monitorEvent.ConsecutiveLoss))}"));
+                    break;
+                case IcmpMonitorEventKind.Loss when !interruptionSequences.Contains(monitorEvent.SequenceNumber):
+                    rows.Add(CreateOperatorIcmpRow(
+                        sourceEvent,
+                        "PACKET LOSS",
+                        LiveDiagnosticsSeverity.Warning,
+                        $"Packet loss  {FormatProbeCount(Math.Max(1, monitorEvent.ConsecutiveLoss))}{FormatApproximateObservationWindow(monitorEvent)}"));
                     break;
                 case IcmpMonitorEventKind.AlertThresholdReached:
                     rows.Add(CreateOperatorIcmpRow(
@@ -323,6 +365,13 @@ public sealed class LiveDiagnosticsPresentationModel
         }
 
         return rows;
+    }
+
+    private static string FormatApproximateObservationWindow(IcmpMonitorEvent monitorEvent)
+    {
+        return monitorEvent.ConsecutiveLoss > 1 && monitorEvent.EstimatedLossWindowMilliseconds > 0
+            ? $"  ~{FormatDuration(TimeSpan.FromMilliseconds(monitorEvent.EstimatedLossWindowMilliseconds))} observation window"
+            : "";
     }
 
     private IReadOnlyList<LiveDiagnosticsRow> BuildIcmpEventsOnlyRows()
@@ -456,10 +505,138 @@ public sealed class LiveDiagnosticsPresentationModel
 
     private IReadOnlyList<LiveDiagnosticsRow> BuildWgbRows()
     {
+        return EngineeringDebugEnabled
+            ? BuildEngineeringWgbRows()
+            : BuildOperatorWgbRows();
+    }
+
+    private IReadOnlyList<LiveDiagnosticsRow> BuildOperatorWgbRows()
+    {
         var rows = new List<LiveDiagnosticsRow>();
         var parserFailures = new Dictionary<string, ParserFailureThrottleState>(StringComparer.OrdinalIgnoreCase);
         WgbAssociationSample? previousSample = null;
-        var displayMode = EngineeringDebugEnabled ? WgbDisplayMode : LiveWgbDisplayMode.ChangesOnly;
+        var showAllSamples = WgbDisplayMode == LiveWgbDisplayMode.AllSamples;
+        var failureActive = false;
+        var reconnectShown = false;
+        var hasAssociation = false;
+
+        foreach (var sourceEvent in _wgbEvents)
+        {
+            if (sourceEvent.PollEvent is null)
+            {
+                AddOperatorSyntheticWgbRow(rows, sourceEvent);
+                continue;
+            }
+
+            var pollEvent = sourceEvent.PollEvent;
+            if (WgbAssociationSample.TryCreate(pollEvent, out var sample) && sample is not null)
+            {
+                var parentApChanged = previousSample is not null && HasParentApChanged(previousSample, sample);
+                var transition = previousSample is not null && sample.HasRoamTransitionFrom(previousSample);
+                var recoveredWithoutConnectEvent = failureActive && hasAssociation;
+
+                if (showAllSamples)
+                {
+                    rows.Add(CreateOperatorWgbSampleRow(sourceEvent, sample, parentApChanged));
+                }
+                else if (previousSample is null)
+                {
+                    rows.Add(CreateOperatorInitialAssociationRow(sourceEvent, sample));
+                }
+                else if (transition)
+                {
+                    rows.Add(CreateOperatorWgbTransitionRow(sourceEvent, previousSample, sample));
+                }
+
+                if (recoveredWithoutConnectEvent)
+                {
+                    rows.Add(CreateOperatorWgbRecoveryRow(sourceEvent, sample));
+                }
+
+                previousSample = sample;
+                hasAssociation = true;
+                failureActive = false;
+                reconnectShown = false;
+                continue;
+            }
+
+            if (pollEvent.Kind == WgbPollEventKind.CommandWarning)
+            {
+                var warningRow = CreateOperatorParserWarningRow(sourceEvent, parserFailures);
+                if (warningRow is not null)
+                {
+                    rows.Add(warningRow);
+                }
+
+                continue;
+            }
+
+            if (pollEvent.Kind == WgbPollEventKind.PollSucceeded
+                && string.IsNullOrWhiteSpace(pollEvent.Association?.ParentApName))
+            {
+                var unexpectedRow = CreateOperatorParserFailureRow(
+                    sourceEvent,
+                    parserFailures,
+                    "Parent AP missing from WGB output.");
+                if (unexpectedRow is not null)
+                {
+                    rows.Add(unexpectedRow);
+                }
+
+                continue;
+            }
+
+            var stateRow = CreateWgbStateRow(sourceEvent, parserFailures);
+            if (stateRow is null)
+            {
+                continue;
+            }
+
+            switch (stateRow.EventName)
+            {
+                case "POLL_FAILED":
+                case "PARSER_FAILURE":
+                case "DISCONNECTED":
+                    if (failureActive)
+                    {
+                        continue;
+                    }
+
+                    failureActive = true;
+                    reconnectShown = false;
+                    break;
+                case "RECONNECTING":
+                    if (reconnectShown)
+                    {
+                        continue;
+                    }
+
+                    failureActive = true;
+                    reconnectShown = true;
+                    break;
+                case "RECONNECTED":
+                    if (!failureActive || !hasAssociation)
+                    {
+                        continue;
+                    }
+
+                    failureActive = false;
+                    reconnectShown = false;
+                    break;
+            }
+
+            rows.Add(stateRow);
+        }
+
+        return rows;
+    }
+
+    private IReadOnlyList<LiveDiagnosticsRow> BuildEngineeringWgbRows()
+    {
+        var rows = new List<LiveDiagnosticsRow>();
+        var parserFailures = new Dictionary<string, ParserFailureThrottleState>(StringComparer.OrdinalIgnoreCase);
+        WgbAssociationSample? previousSample = null;
+        var displayMode = WgbDisplayMode;
         var normalFailureActive = false;
         var normalReconnectShown = false;
         var normalHasAssociation = false;
@@ -646,7 +823,206 @@ public sealed class LiveDiagnosticsPresentationModel
             LiveDiagnosticsPanel.Icmp,
             eventName,
             severity,
-            $"{sourceEvent.Timestamp.ToLocalTime():HH:mm:ss}  {detail}");
+            $"{FormatOperatorTime(sourceEvent.Timestamp)}  {detail}");
+    }
+
+    private static void AddOperatorSyntheticWgbRow(
+        ICollection<LiveDiagnosticsRow> rows,
+        SequencedWgbEvent sourceEvent)
+    {
+        var eventName = sourceEvent.SyntheticEventName ?? "WGB";
+        var description = eventName switch
+        {
+            "STALE" => "WGB data stale",
+            "RECOVERED" => "WGB data recovered",
+            _ => eventName
+        };
+        var details = sourceEvent.SyntheticMessage?
+            .Replace("STALE DATA", "", StringComparison.Ordinal)
+            .Replace("RECOVERED", "", StringComparison.Ordinal)
+            .Trim();
+        rows.Add(new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100,
+            sourceEvent.Timestamp,
+            LiveDiagnosticsPanel.Wgb,
+            eventName,
+            sourceEvent.SyntheticSeverity,
+            $"{FormatOperatorTime(sourceEvent.Timestamp)}  {description}{(string.IsNullOrWhiteSpace(details) ? "" : $"  {details}")}"));
+    }
+
+    private static LiveDiagnosticsRow CreateOperatorWgbSampleRow(
+        SequencedWgbEvent sourceEvent,
+        WgbAssociationSample sample,
+        bool parentApChanged)
+    {
+        return new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100,
+            sample.Timestamp,
+            LiveDiagnosticsPanel.Wgb,
+            parentApChanged ? "AP_CHANGE_SAMPLE" : "SAMPLE",
+            LiveDiagnosticsSeverity.Neutral,
+            FormatOperatorWgbSample(sample));
+    }
+
+    private static LiveDiagnosticsRow CreateOperatorInitialAssociationRow(
+        SequencedWgbEvent sourceEvent,
+        WgbAssociationSample sample)
+    {
+        return new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100,
+            sample.Timestamp,
+            LiveDiagnosticsPanel.Wgb,
+            "INITIAL_ASSOCIATION",
+            LiveDiagnosticsSeverity.Success,
+            $"{FormatOperatorTime(sample.Timestamp)}  Initial association  {FormatOperatorWgbAssociation(sample)}");
+    }
+
+    private static LiveDiagnosticsRow CreateOperatorWgbTransitionRow(
+        SequencedWgbEvent sourceEvent,
+        WgbAssociationSample previous,
+        WgbAssociationSample current)
+    {
+        var parentApChanged = HasParentApChanged(previous, current);
+        var radioChanged = HasValueChanged(previous.RadioId, current.RadioId);
+        var channelChanged = HasValueChanged(previous.Channel, current.Channel);
+        var title = parentApChanged
+            ? "AP change"
+            : radioChanged
+                ? "Radio change"
+                : channelChanged
+                    ? "Channel change"
+                    : "Association change";
+        var eventName = parentApChanged
+            ? "AP_CHANGE"
+            : radioChanged
+                ? "RADIO_CHANGE"
+                : channelChanged
+                    ? "CHANNEL_CHANGE"
+                    : "ASSOCIATION_CHANGE";
+        var indent = new string(' ', 15);
+        var text = string.Join(
+            Environment.NewLine,
+            $"{FormatOperatorTime(current.Timestamp)}  {title}",
+            $"{indent}{previous.ParentAp} -> {current.ParentAp}",
+            $"{indent}CH {WgbAssociationSample.FormatOptional(previous.Channel)} -> {WgbAssociationSample.FormatOptional(current.Channel)}",
+            $"{indent}Radio {WgbAssociationSample.FormatOptional(previous.RadioId)} -> {WgbAssociationSample.FormatOptional(current.RadioId)}",
+            $"{indent}RSSI {WgbAssociationSample.FormatRssi(previous.Rssi)} -> {WgbAssociationSample.FormatRssi(current.Rssi)}",
+            $"{indent}Rate {FormatRateValues(previous)} -> {FormatRatePair(current)}");
+        return new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100,
+            current.Timestamp,
+            LiveDiagnosticsPanel.Wgb,
+            eventName,
+            LiveDiagnosticsSeverity.Warning,
+            text);
+    }
+
+    private static LiveDiagnosticsRow CreateOperatorWgbRecoveryRow(
+        SequencedWgbEvent sourceEvent,
+        WgbAssociationSample sample)
+    {
+        return new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100 + 1,
+            sample.Timestamp,
+            LiveDiagnosticsPanel.Wgb,
+            "RECOVERED",
+            LiveDiagnosticsSeverity.Success,
+            $"{FormatOperatorTime(sample.Timestamp)}  WGB data recovered  AP={sample.ParentAp} RSSI={WgbAssociationSample.FormatRssi(sample.Rssi)}");
+    }
+
+    private static LiveDiagnosticsRow? CreateOperatorParserWarningRow(
+        SequencedWgbEvent sourceEvent,
+        IDictionary<string, ParserFailureThrottleState> parserFailures)
+    {
+        var message = sourceEvent.PollEvent?.Message?.Trim();
+        if (string.IsNullOrWhiteSpace(message) || IsExpectedRssiNormalization(message))
+        {
+            return null;
+        }
+
+        return CreateOperatorParserFailureRow(sourceEvent, parserFailures, message, "PARSER_WARNING");
+    }
+
+    private static LiveDiagnosticsRow? CreateOperatorParserFailureRow(
+        SequencedWgbEvent sourceEvent,
+        IDictionary<string, ParserFailureThrottleState> parserFailures,
+        string message,
+        string eventName = "PARSER_FAILURE")
+    {
+        var suffix = "";
+        if (parserFailures.TryGetValue(message, out var state))
+        {
+            if (sourceEvent.Timestamp - state.LastShownAt < ParserFailureThrottleWindow)
+            {
+                state.SuppressedCount++;
+                return null;
+            }
+
+            if (state.SuppressedCount > 0)
+            {
+                suffix = $"  repeated {state.SuppressedCount} time(s)";
+                state.SuppressedCount = 0;
+            }
+
+            state.LastShownAt = sourceEvent.Timestamp;
+        }
+        else
+        {
+            parserFailures[message] = new ParserFailureThrottleState(sourceEvent.Timestamp);
+        }
+
+        var title = eventName == "PARSER_WARNING" ? "Parser warning" : "Parser failure";
+        return new LiveDiagnosticsRow(
+            sourceEvent.OrderId * 100,
+            sourceEvent.Timestamp,
+            LiveDiagnosticsPanel.Wgb,
+            eventName,
+            eventName == "PARSER_WARNING" ? LiveDiagnosticsSeverity.Warning : LiveDiagnosticsSeverity.Critical,
+            $"{FormatOperatorTime(sourceEvent.Timestamp)}  {title}  {message}{suffix}");
+    }
+
+    private static string FormatOperatorWgbSample(WgbAssociationSample sample)
+    {
+        return $"{FormatOperatorTime(sample.Timestamp)} AP={sample.ParentAp} RSSI={WgbAssociationSample.FormatRssi(sample.Rssi)} "
+            + $"CH={WgbAssociationSample.FormatOptional(sample.Channel)} RATE={FormatRatePair(sample)} R={WgbAssociationSample.FormatOptional(sample.RadioId)}";
+    }
+
+    private static string FormatOperatorWgbAssociation(WgbAssociationSample sample)
+    {
+        return $"AP={sample.ParentAp} RSSI={WgbAssociationSample.FormatRssi(sample.Rssi)} "
+            + $"CH={WgbAssociationSample.FormatOptional(sample.Channel)} RATE={FormatRatePair(sample)} R={WgbAssociationSample.FormatOptional(sample.RadioId)}";
+    }
+
+    private static string FormatRatePair(WgbAssociationSample sample)
+    {
+        var values = FormatRateValues(sample);
+        return values == "-/-" ? values : $"{values} Mbps";
+    }
+
+    private static string FormatRateValues(WgbAssociationSample sample)
+    {
+        var tx = WgbAssociationSample.FormatOptional(sample.TxRateMbps);
+        var rx = WgbAssociationSample.FormatOptional(sample.RxRateMbps);
+        return tx == "-" && rx == "-" ? "-/-" : $"{tx}/{rx}";
+    }
+
+    private static bool HasParentApChanged(WgbAssociationSample previous, WgbAssociationSample current)
+    {
+        return HasValueChanged(previous.ParentAp, current.ParentAp);
+    }
+
+    private static bool HasValueChanged(string? previous, string? current)
+    {
+        return !string.IsNullOrWhiteSpace(previous)
+            && !string.IsNullOrWhiteSpace(current)
+            && !StringComparer.OrdinalIgnoreCase.Equals(previous.Trim(), current.Trim());
+    }
+
+    private static bool IsExpectedRssiNormalization(string message)
+    {
+        return message.Contains("RSSI magnitude", StringComparison.OrdinalIgnoreCase)
+            && message.Contains("normalized to", StringComparison.OrdinalIgnoreCase)
+            && message.Contains("iw9167-wgb-v1", StringComparison.OrdinalIgnoreCase);
     }
 
     private void AddSyntheticWgbRow(
@@ -776,7 +1152,9 @@ public sealed class LiveDiagnosticsPresentationModel
             _ => LiveDiagnosticsSeverity.Critical
         };
         var reason = string.IsNullOrWhiteSpace(message) ? "" : $" reason=\"{EscapeReason(message)}\"";
-        var text = $"{FormatTime(pollEvent.Timestamp)} {eventName}{reason}{suffix}";
+        var text = EngineeringDebugEnabled
+            ? $"{FormatTime(pollEvent.Timestamp)} {eventName}{reason}{suffix}"
+            : $"{FormatOperatorTime(pollEvent.Timestamp)}  {FormatOperatorWgbStateName(eventName)}{reason}{suffix}";
         return new LiveDiagnosticsRow(
             sourceEvent.OrderId * 100,
             pollEvent.Timestamp,
@@ -784,6 +1162,19 @@ public sealed class LiveDiagnosticsPresentationModel
             eventName,
             severity,
             text);
+    }
+
+    private static string FormatOperatorWgbStateName(string eventName)
+    {
+        return eventName switch
+        {
+            "POLL_FAILED" => "WGB poll failed",
+            "PARSER_FAILURE" => "Parser failure",
+            "DISCONNECTED" => "WGB disconnected",
+            "RECONNECTING" => "WGB reconnecting",
+            "RECONNECTED" => "WGB reconnected",
+            _ => eventName
+        };
     }
 
     private LiveDiagnosticsRow CreateWgbRow(SequencedWgbEvent sourceEvent, int subOrder)
@@ -1065,6 +1456,11 @@ public sealed class LiveDiagnosticsPresentationModel
     private static string FormatTime(DateTimeOffset timestamp)
     {
         return WgbAssociationSample.FormatTimestamp(timestamp);
+    }
+
+    private static string FormatOperatorTime(DateTimeOffset timestamp)
+    {
+        return timestamp.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
     }
 
     private static string FormatRoundTripTime(TimeSpan? roundTripTime)

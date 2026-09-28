@@ -145,7 +145,7 @@ public sealed class LiveDiagnosticsPresentationModelTests
     }
 
     [Fact]
-    public void NormalDiagnosticsHideInternalIcmpAndWgbLifecycleDetails()
+    public void NormalAllModesAreCompactAndHideInternalLifecycleDetails()
     {
         var model = new LiveDiagnosticsPresentationModel();
         model.SetEngineeringDebugEnabled(false);
@@ -177,16 +177,107 @@ public sealed class LiveDiagnosticsPresentationModelTests
             rssi: "-55"));
 
         var snapshot = model.Snapshot();
-        var icmp = Assert.Single(snapshot.IcmpRows);
 
-        Assert.Equal("PACKET LOSS", icmp.EventName);
-        Assert.Contains("Packet loss", icmp.Text);
-        Assert.DoesNotContain("seq=", icmp.Text);
-        Assert.DoesNotContain("late_timeout", icmp.Text);
-        Assert.Equal(new[] { "SAMPLE", "ROAM" }, snapshot.WgbRows.Select(row => row.EventName).ToArray());
+        Assert.Equal(new[] { "OK", "LOSS" }, snapshot.IcmpRows.Select(row => row.EventName).ToArray());
+        Assert.All(snapshot.IcmpRows, row => Assert.Matches(@"^\d{2}:\d{2}:\d{2}\.\d{3}", row.Text));
+        Assert.DoesNotContain(snapshot.IcmpRows, row => row.Text.Contains("seq=", StringComparison.Ordinal));
+        Assert.DoesNotContain(snapshot.IcmpRows, row => row.Text.Contains("late_timeout", StringComparison.Ordinal));
+        Assert.Equal(new[] { "SAMPLE", "SAMPLE", "AP_CHANGE_SAMPLE" }, snapshot.WgbRows.Select(row => row.EventName).ToArray());
+        Assert.All(snapshot.WgbRows, row => Assert.Matches(@"^\d{2}:\d{2}:\d{2}\.\d{3}", row.Text));
+        Assert.DoesNotContain(snapshot.WgbRows, row => row.Text.Contains("ROAM", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("AP=AP-223", snapshot.WgbRows[^1].Text);
+        Assert.Contains("RATE=173/173 Mbps", snapshot.WgbRows[^1].Text);
         Assert.DoesNotContain(snapshot.WgbRows, row => row.Text.Contains("running", StringComparison.Ordinal));
         Assert.DoesNotContain(snapshot.WgbRows, row => row.Text.Contains("RSSI magnitude", StringComparison.Ordinal));
         Assert.Equal(5, snapshot.WgbSourceEventCount);
+    }
+
+    [Fact]
+    public void NormalIcmpEventsDistinguishProbeLossApproximateWindowAndMeasuredOutage()
+    {
+        var model = new LiveDiagnosticsPresentationModel();
+        model.SetEngineeringDebugEnabled(false);
+        model.SetIcmpDisplayMode(LiveIcmpDisplayMode.EventsOnly);
+
+        model.Apply(Ping(
+            IcmpMonitorEventKind.PacketLoss,
+            sequence: 1,
+            milliseconds: 14,
+            message: "late_timeout state_unchanged",
+            appliedToState: false));
+        model.Apply(Ping(IcmpMonitorEventKind.LossStarted, sequence: 2, milliseconds: 102, consecutiveLoss: 1, lossWindow: 100));
+        model.Apply(Ping(IcmpMonitorEventKind.Loss, sequence: 3, milliseconds: 206, consecutiveLoss: 2, lossWindow: 200));
+        model.Apply(Ping(IcmpMonitorEventKind.AlertThresholdReached, sequence: 4, milliseconds: 614, consecutiveLoss: 7, lossWindow: 684));
+        model.Apply(Ping(IcmpMonitorEventKind.Recovered, sequence: 5, milliseconds: 1_298, rttMilliseconds: 6, lossWindow: 684));
+
+        var rows = model.Snapshot().IcmpRows;
+
+        Assert.Equal(5, rows.Count);
+        Assert.EndsWith("Packet loss  1 probe", rows[0].Text, StringComparison.Ordinal);
+        Assert.EndsWith("Packet loss  1 probe", rows[1].Text, StringComparison.Ordinal);
+        Assert.Contains("2 probes  ~200 ms observation window", rows[2].Text);
+        Assert.Contains("Interruption  7 probes  684 ms", rows[3].Text);
+        Assert.DoesNotContain("~", rows[3].Text, StringComparison.Ordinal);
+        Assert.Contains("Connectivity restored  outage 684 ms", rows[4].Text);
+        Assert.All(rows, row => Assert.Matches(@"^\d{2}:\d{2}:\d{2}\.\d{3}", row.Text));
+        Assert.DoesNotContain(rows, row => row.Text.Contains("late_timeout", StringComparison.Ordinal));
+        Assert.DoesNotContain(rows, row => row.Text.Contains("state_unchanged", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NormalWgbEventModeShowsAssociationAndDetailedApChangeOnly()
+    {
+        var model = new LiveDiagnosticsPresentationModel();
+        model.SetEngineeringDebugEnabled(false);
+        model.SetWgbDisplayMode(LiveWgbDisplayMode.ChangesOnly);
+
+        model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 0, parentAp: "AP-221", txRate: "117 Mbps", rxRate: "86 Mbps"));
+        model.Apply(Wgb(WgbPollEventKind.CommandStarted, milliseconds: 10, message: "running"));
+        model.Apply(Wgb(
+            WgbPollEventKind.CommandWarning,
+            milliseconds: 20,
+            message: "RSSI magnitude '58' normalized to -58 dBm for iw9167-wgb-v1."));
+        model.Apply(Wgb(
+            WgbPollEventKind.PollSucceeded,
+            milliseconds: 911,
+            parentAp: "AP-223",
+            bssid: "dd:ee:ff",
+            channel: "48",
+            radioId: "2",
+            rssi: "-55",
+            txRate: "144 Mbps",
+            rxRate: "173 Mbps"));
+
+        var rows = model.Snapshot().WgbRows;
+
+        Assert.Equal(new[] { "INITIAL_ASSOCIATION", "AP_CHANGE" }, rows.Select(row => row.EventName).ToArray());
+        Assert.Contains("Initial association", rows[0].Text);
+        Assert.Contains("AP change", rows[1].Text);
+        Assert.Contains("AP-221 -> AP-223", rows[1].Text);
+        Assert.Contains("CH 44 -> 48", rows[1].Text);
+        Assert.Contains("Radio 1 -> 2", rows[1].Text);
+        Assert.Contains("RSSI -62 dBm -> -55 dBm", rows[1].Text);
+        Assert.Contains("Rate 117/86 -> 144/173 Mbps", rows[1].Text);
+        Assert.Matches(@"^\d{2}:\d{2}:\d{2}\.\d{3}", rows[1].Text);
+        Assert.DoesNotContain(rows, row => row.Text.Contains("running", StringComparison.Ordinal));
+        Assert.DoesNotContain(rows, row => row.Text.Contains("RSSI magnitude", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NormalWgbEventModeKeepsUnexpectedParserWarnings()
+    {
+        var model = new LiveDiagnosticsPresentationModel();
+        model.SetEngineeringDebugEnabled(false);
+        model.SetWgbDisplayMode(LiveWgbDisplayMode.ChangesOnly);
+
+        model.Apply(Wgb(
+            WgbPollEventKind.CommandWarning,
+            milliseconds: 20,
+            message: "RSSI value 'strong' is not a numeric dBm value."));
+
+        var row = Assert.Single(model.Snapshot().WgbRows);
+        Assert.Equal("PARSER_WARNING", row.EventName);
+        Assert.Contains("not a numeric dBm value", row.Text);
     }
 
     [Fact]
@@ -194,6 +285,7 @@ public sealed class LiveDiagnosticsPresentationModelTests
     {
         var model = new LiveDiagnosticsPresentationModel();
         model.SetEngineeringDebugEnabled(false);
+        model.SetWgbDisplayMode(LiveWgbDisplayMode.ChangesOnly);
 
         model.Apply(WgbFailure(WgbPollEventKind.Connected, milliseconds: 0, message: null));
         model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 10));
@@ -208,7 +300,7 @@ public sealed class LiveDiagnosticsPresentationModelTests
         var rows = model.Snapshot().WgbRows;
 
         Assert.Equal(
-            new[] { "SAMPLE", "DISCONNECTED", "RECONNECTING", "RECONNECTED" },
+            new[] { "INITIAL_ASSOCIATION", "DISCONNECTED", "RECONNECTING", "RECONNECTED" },
             rows.Select(row => row.EventName).ToArray());
     }
 
@@ -217,6 +309,7 @@ public sealed class LiveDiagnosticsPresentationModelTests
     {
         var model = new LiveDiagnosticsPresentationModel();
         model.SetEngineeringDebugEnabled(false);
+        model.SetWgbDisplayMode(LiveWgbDisplayMode.ChangesOnly);
 
         model.Apply(Wgb(WgbPollEventKind.PollSucceeded, milliseconds: 0));
         model.Apply(WgbFailure(WgbPollEventKind.PollFailed, milliseconds: 10, "command failed"));
@@ -225,8 +318,8 @@ public sealed class LiveDiagnosticsPresentationModelTests
 
         var rows = model.Snapshot().WgbRows;
 
-        Assert.Equal(new[] { "SAMPLE", "POLL_FAILED", "RECOVERED" }, rows.Select(row => row.EventName).ToArray());
-        Assert.Contains("POLLING RECOVERED", rows[^1].Text);
+        Assert.Equal(new[] { "INITIAL_ASSOCIATION", "POLL_FAILED", "RECOVERED" }, rows.Select(row => row.EventName).ToArray());
+        Assert.Contains("WGB data recovered", rows[^1].Text);
     }
 
     [Fact]

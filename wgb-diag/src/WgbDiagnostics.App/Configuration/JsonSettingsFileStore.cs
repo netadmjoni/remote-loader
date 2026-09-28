@@ -28,7 +28,7 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
             var json = File.ReadAllText(SettingsPath);
             var document = JsonSerializer.Deserialize<SettingsDocument>(json, SerializerOptions);
             var options = document?.WgbDiagnostics ?? WgbDiagnosticsOptions.CreateDefault();
-            if (WgbDiagnosticsOptionsMigration.Apply(options))
+            if (WgbDiagnosticsOptionsMigration.Apply(options, document?.SettingsVersion ?? 0))
             {
                 Save(options);
             }
@@ -48,7 +48,11 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
     public void Save(WgbDiagnosticsOptions options)
     {
         AppDataPaths.EnsureRootDirectory();
-        var document = new SettingsDocument { WgbDiagnostics = options };
+        var document = new SettingsDocument
+        {
+            SettingsVersion = WgbDiagnosticsOptionsMigration.CurrentSettingsVersion,
+            WgbDiagnostics = options
+        };
         var json = JsonSerializer.Serialize(document, SerializerOptions);
         File.WriteAllText(SettingsPath, json);
     }
@@ -62,6 +66,8 @@ public sealed class JsonSettingsFileStore : ISettingsFileStore
 
     private sealed class SettingsDocument
     {
+        public int SettingsVersion { get; init; }
+
         public WgbDiagnosticsOptions? WgbDiagnostics { get; init; }
     }
 }

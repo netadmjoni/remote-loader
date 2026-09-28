@@ -84,8 +84,18 @@
         </TextBlock.Style>
       </TextBlock>
     </DataTemplate>
+    <Style x:Key="LiveDiagnosticsListBoxItemStyle" TargetType="ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding EventName}" Value="AP_CHANGE_SAMPLE">
+          <Setter Property="Background" Value="#FFF2B2" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
     <Style x:Key="LiveDiagnosticsListBoxStyle" TargetType="ListBox">
       <Setter Property="ItemTemplate" Value="{StaticResource LiveDiagnosticRowTemplate}" />
+      <Setter Property="ItemContainerStyle" Value="{StaticResource LiveDiagnosticsListBoxItemStyle}" />
       <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
       <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
       <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
@@ -506,23 +516,23 @@
                     </ComboBox>
                     <TextBlock x:Name="LiveIcmpDisplayModeLabel" Text="ICMP:" VerticalAlignment="Center" Margin="0,0,6,8" FontWeight="SemiBold" />
                     <ComboBox x:Name="LiveIcmpDisplayModeComboBox"
-                              Width="136"
+                              Width="168"
                               MinHeight="28"
                               Margin="0,0,12,8"
                               SelectionChanged="LiveIcmpDisplayModeComboBox_SelectionChanged">
+                      <ComboBoxItem Content="Loss / events only" Tag="EventsOnly" />
                       <ComboBoxItem Content="All pings" Tag="AllPings" />
-                      <ComboBoxItem Content="Events only" Tag="EventsOnly" />
-                      <ComboBoxItem Content="Loss window" Tag="LossWindow" />
+                      <ComboBoxItem x:Name="LiveIcmpLossWindowComboBoxItem" Content="Loss window (debug)" Tag="LossWindow" />
                     </ComboBox>
                     <TextBlock x:Name="LiveWgbDisplayModeLabel" Text="WGB:" VerticalAlignment="Center" Margin="0,0,6,8" FontWeight="SemiBold" />
                     <ComboBox x:Name="LiveWgbDisplayModeComboBox"
-                              Width="136"
+                              Width="176"
                               MinHeight="28"
                               Margin="0,0,12,8"
                               SelectionChanged="LiveWgbDisplayModeComboBox_SelectionChanged">
+                      <ComboBoxItem Content="Roams / events only" Tag="ChangesOnly" />
                       <ComboBoxItem Content="All samples" Tag="AllSamples" />
-                      <ComboBoxItem Content="Changes only" Tag="ChangesOnly" />
-                      <ComboBoxItem Content="Roams only" Tag="RoamsOnly" />
+                      <ComboBoxItem x:Name="LiveWgbRoamsOnlyComboBoxItem" Content="Roams only (debug)" Tag="RoamsOnly" />
                     </ComboBox>
                   </WrapPanel>
                   <TextBlock x:Name="LiveDiagnosticsBufferTextBlock"

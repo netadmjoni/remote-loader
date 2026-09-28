@@ -540,8 +540,10 @@ public partial class MainWindow : Window
         try
         {
             SetComboBoxSelectionByTag(LiveDiagnosticsLayoutComboBox, LiveDiagnosticsLayout.Auto.ToString());
-            SetComboBoxSelectionByTag(LiveIcmpDisplayModeComboBox, LiveIcmpDisplayMode.AllPings.ToString());
-            SetComboBoxSelectionByTag(LiveWgbDisplayModeComboBox, LiveWgbDisplayMode.AllSamples.ToString());
+            _liveDiagnostics.SetIcmpDisplayMode(LiveIcmpDisplayMode.EventsOnly);
+            _liveDiagnostics.SetWgbDisplayMode(LiveWgbDisplayMode.ChangesOnly);
+            SetComboBoxSelectionByTag(LiveIcmpDisplayModeComboBox, LiveIcmpDisplayMode.EventsOnly.ToString());
+            SetComboBoxSelectionByTag(LiveWgbDisplayModeComboBox, LiveWgbDisplayMode.ChangesOnly.ToString());
         }
         finally
         {
@@ -659,8 +661,20 @@ public partial class MainWindow : Window
             _liveDiagnosticsSplitterPosition = Math.Clamp(options.LiveDiagnosticsSplitterPosition, 0.1, 0.9);
             _liveDiagnostics.ConfigureBufferSize(options.EventDisplayBufferSize);
             _liveDiagnostics.SetEngineeringDebugEnabled(options.EnableEngineeringDebugViews);
-            _liveDiagnostics.SetIcmpDisplayMode(ParseLiveIcmpDisplayMode(options.IcmpDisplayMode));
-            _liveDiagnostics.SetWgbDisplayMode(ParseLiveWgbDisplayMode(options.WgbDisplayMode));
+            var icmpDisplayMode = ParseLiveIcmpDisplayMode(options.IcmpDisplayMode);
+            var wgbDisplayMode = ParseLiveWgbDisplayMode(options.WgbDisplayMode);
+            if (!options.EnableEngineeringDebugViews)
+            {
+                icmpDisplayMode = icmpDisplayMode == LiveIcmpDisplayMode.LossWindow
+                    ? LiveIcmpDisplayMode.EventsOnly
+                    : icmpDisplayMode;
+                wgbDisplayMode = wgbDisplayMode == LiveWgbDisplayMode.RoamsOnly
+                    ? LiveWgbDisplayMode.ChangesOnly
+                    : wgbDisplayMode;
+            }
+
+            _liveDiagnostics.SetIcmpDisplayMode(icmpDisplayMode);
+            _liveDiagnostics.SetWgbDisplayMode(wgbDisplayMode);
             SetComboBoxSelectionByTag(LiveDiagnosticsLayoutComboBox, _liveDiagnosticsLayout.ToString());
             SetComboBoxSelectionByTag(LiveIcmpDisplayModeComboBox, _liveDiagnostics.IcmpDisplayMode.ToString());
             SetComboBoxSelectionByTag(LiveWgbDisplayModeComboBox, _liveDiagnostics.WgbDisplayMode.ToString());
@@ -1013,14 +1027,14 @@ public partial class MainWindow : Window
     {
         return Enum.TryParse<LiveIcmpDisplayMode>(value, ignoreCase: true, out var mode)
             ? mode
-            : LiveIcmpDisplayMode.AllPings;
+            : LiveIcmpDisplayMode.EventsOnly;
     }
 
     private static LiveWgbDisplayMode ParseLiveWgbDisplayMode(string? value)
     {
         return Enum.TryParse<LiveWgbDisplayMode>(value, ignoreCase: true, out var mode)
             ? mode
-            : LiveWgbDisplayMode.AllSamples;
+            : LiveWgbDisplayMode.ChangesOnly;
     }
 
     private void ForgetSshPasswordButton_Click(object sender, RoutedEventArgs e)
@@ -2765,10 +2779,8 @@ public partial class MainWindow : Window
         RoamDiagnosticsTabItem.Visibility = visibility;
         RawParserTabItem.Visibility = visibility;
         RawPingViewRadioButton.Visibility = visibility;
-        LiveIcmpDisplayModeLabel.Visibility = visibility;
-        LiveIcmpDisplayModeComboBox.Visibility = visibility;
-        LiveWgbDisplayModeLabel.Visibility = visibility;
-        LiveWgbDisplayModeComboBox.Visibility = visibility;
+        LiveIcmpLossWindowComboBoxItem.Visibility = visibility;
+        LiveWgbRoamsOnlyComboBoxItem.Visibility = visibility;
 
         if (!enabled)
         {
