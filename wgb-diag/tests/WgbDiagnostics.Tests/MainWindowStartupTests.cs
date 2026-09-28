@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using System.Reflection;
 using System.Threading;
+using System.Globalization;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using ScottPlot.WPF;
@@ -82,6 +83,14 @@ public sealed class MainWindowStartupTests
                 Assert.Equal("100 ms", GetPrivateControl<TextBlock>(window, "LivePingIntervalTextBlock").Text);
                 Assert.Equal("1000 ms", GetPrivateControl<TextBlock>(window, "LivePingTimeoutTextBlock").Text);
                 Assert.Equal("600 ms", GetPrivateControl<TextBlock>(window, "LiveLossThresholdTextBlock").Text);
+                var testWgbButton = GetPrivateControl<Button>(window, "TestSshButton");
+                Assert.Equal("Test WGB connection", testWgbButton.Content);
+                Assert.False(testWgbButton.IsEnabled);
+                Assert.Same(
+                    GetPrivateControl<StackPanel>(window, "EngineeringWgbTestPanel"),
+                    testWgbButton.Parent);
+                Assert.Equal(1, GetPrivateControl<StackPanel>(window, "SelectedRoamBssidFieldPanel").Opacity);
+                Assert.Equal(1, GetPrivateControl<StackPanel>(window, "SelectedRoamClassFieldPanel").Opacity);
                 Assert.Null(window.FindName("WgbCommandTextBox"));
                 Assert.Null(window.FindName("WgbLogCollectionEnabledCheckBox"));
                 Assert.Null(window.FindName("TftpTimeoutSecondsTextBox"));
@@ -295,9 +304,10 @@ public sealed class MainWindowStartupTests
                     "RenderRealtimeGraph",
                     BindingFlags.Instance | BindingFlags.NonPublic);
                 Assert.NotNull(render);
+                var roamTimestamp = DateTimeOffset.UtcNow.AddMinutes(-6);
 
                 realtime.Apply(CreateRoam(
-                    DateTimeOffset.UtcNow.AddMinutes(-6),
+                    roamTimestamp,
                     "AP-1",
                     "AP-2",
                     "1",
@@ -310,6 +320,9 @@ public sealed class MainWindowStartupTests
                     GetPrivateControl<TextBlock>(window, "SelectedRoamWindowNoticeTextBlock").Visibility);
                 Assert.StartsWith("0 roam markers", GetPrivateControl<TextBlock>(window, "DashboardGraphStatusTextBlock").Text);
                 Assert.Contains("Roam", GetPrivateControl<TextBlock>(window, "DashboardLatestEventTextBlock").Text);
+                Assert.Equal(
+                    roamTimestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture),
+                    GetPrivateControl<TextBlock>(window, "LiveLatestRoamTextBlock").Text);
 
                 GetPrivateControl<Button>(window, "ClearSelectedRoamButton").RaiseEvent(
                     new System.Windows.RoutedEventArgs(Button.ClickEvent));

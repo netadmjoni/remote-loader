@@ -411,11 +411,11 @@
                     <TextBlock Text="AP" Style="{StaticResource MetricLabelStyle}" />
                     <TextBlock x:Name="SelectedRoamApTextBlock" Text="-" TextWrapping="Wrap" />
                   </StackPanel>
-                  <StackPanel Margin="0,0,12,6" Opacity="0.68">
+                  <StackPanel x:Name="SelectedRoamBssidFieldPanel" Margin="0,0,12,6">
                     <TextBlock Text="BSSID" Style="{StaticResource MetricLabelStyle}" />
                     <TextBlock x:Name="SelectedRoamBssidTextBlock" Text="-" TextWrapping="Wrap" />
                   </StackPanel>
-                  <StackPanel Margin="0,0,0,6" Opacity="0.68">
+                  <StackPanel x:Name="SelectedRoamClassFieldPanel" Margin="0,0,0,6">
                     <TextBlock Text="Class" Style="{StaticResource MetricLabelStyle}" />
                     <TextBlock x:Name="SelectedRoamClassTextBlock" Text="-" TextWrapping="Wrap" />
                   </StackPanel>
@@ -446,17 +446,10 @@
       <TabItem Header="Events / Diagnostics">
         <Grid Margin="10">
           <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
 
-          <WrapPanel Grid.Row="0" Margin="0,0,0,8">
-            <Button x:Name="TestSshButton" Content="Test SSH" Click="TestSshButton_Click" />
-            <TextBlock Text="SSH/WGB status:" VerticalAlignment="Center" Margin="12,0,4,8" FontWeight="SemiBold" />
-            <TextBlock x:Name="WgbStatusTextBlock" Text="Not tested" VerticalAlignment="Center" MinWidth="260" Margin="0,0,0,8" />
-          </WrapPanel>
-
-          <TabControl Grid.Row="1" x:Name="DiagnosticsTabControl" SelectedIndex="0">
+          <TabControl Grid.Row="0" x:Name="DiagnosticsTabControl" SelectedIndex="0">
             <TabItem Header="Live diagnostics">
               <Grid x:Name="LiveDiagnosticsRoot" Margin="8" SizeChanged="LiveDiagnosticsRoot_SizeChanged">
                 <Grid.RowDefinitions>
@@ -869,6 +862,7 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Admin / engineering settings" Style="{StaticResource SectionTitleStyle}" />
@@ -930,6 +924,18 @@
                 <TextBox Grid.Row="22" Grid.Column="1" x:Name="EventDisplayBufferSizeTextBox" />
                 <TextBlock Grid.Row="23" Grid.Column="0" Text="Enable engineering/debug views" Style="{StaticResource FieldLabelStyle}" />
                 <CheckBox Grid.Row="23" Grid.Column="1" x:Name="EnableEngineeringDebugViewsCheckBox" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="24" Grid.Column="0" Text="WGB connection test" Style="{StaticResource FieldLabelStyle}" />
+                <StackPanel Grid.Row="24" Grid.Column="1" x:Name="EngineeringWgbTestPanel">
+                  <Button x:Name="TestSshButton"
+                          Content="Test WGB connection"
+                          Click="TestSshButton_Click"
+                          HorizontalAlignment="Left"
+                          MinWidth="180" />
+                  <TextBlock x:Name="WgbStatusTextBlock"
+                             Text="Not tested"
+                             TextWrapping="Wrap"
+                             Margin="0,4,0,8" />
+                </StackPanel>
               </Grid>
             </Border>
           </ScrollViewer>

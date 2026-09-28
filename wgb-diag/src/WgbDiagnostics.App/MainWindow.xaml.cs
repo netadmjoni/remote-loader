@@ -224,7 +224,7 @@ public partial class MainWindow : Window
         }
 
         TestSshButton.IsEnabled = false;
-        WgbStatusTextBlock.Text = "Testing SSH";
+        WgbStatusTextBlock.Text = "Testing WGB connection";
 
         try
         {
@@ -247,7 +247,7 @@ public partial class MainWindow : Window
             var parseResult = _wgbAssociationParser.Parse(rawOutput, options.ParserProfile);
             RawWgbOutputTextBox.Text = FormatSshTestResult(result.Diagnostics, rawOutput);
             ApplyWgbParseResult(parseResult);
-            WgbStatusTextBlock.Text = $"Test SSH succeeded: {FormatSshDiagnostics(result.Diagnostics)}";
+            WgbStatusTextBlock.Text = $"WGB connection test succeeded: {FormatSshDiagnostics(result.Diagnostics)}";
         }
         catch (Exception ex)
         {
@@ -255,8 +255,8 @@ public partial class MainWindow : Window
                 ? commandException.Diagnostics
                 : null;
             WgbStatusTextBlock.Text = diagnostics is null
-                ? "Test SSH failed"
-                : $"Test SSH failed: {FormatSshDiagnostics(diagnostics)}";
+                ? "WGB connection test failed"
+                : $"WGB connection test failed: {FormatSshDiagnostics(diagnostics)}";
             RawWgbOutputTextBox.Text = FormatSshTestFailure(diagnostics, ex.Message);
         }
         finally
@@ -2489,7 +2489,7 @@ public partial class MainWindow : Window
         LiveWgbStateTextBlock.Text = FormatDashboardWgbStatus(snapshot.WgbStatus);
         LiveLatestRoamTextBlock.Text = latestRoam is null
             ? "-"
-            : $"{latestRoam.Timestamp.ToLocalTime():HH:mm:ss} {latestRoam.RoamClassification}";
+            : latestRoam.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         LiveLatestOutageTextBlock.Text = snapshot.PingStatus.CurrentLossWindow > TimeSpan.Zero
             ? FormatDuration(snapshot.PingStatus.CurrentLossWindow)
             : FormatDuration(snapshot.PingStatus.LongestOutage);
