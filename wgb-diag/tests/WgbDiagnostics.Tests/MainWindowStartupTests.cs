@@ -36,6 +36,7 @@ public sealed class MainWindowStartupTests
                 Assert.False(dashboardAdvanced.IsExpanded);
                 var selectedRoam = GetPrivateControl<Expander>(window, "SelectedRoamExpander");
                 Assert.False(selectedRoam.IsExpanded);
+                Assert.True(GetPrivateControl<CheckBox>(window, "FollowLatestRoamCheckBox").IsChecked);
                 Assert.Equal(
                     System.Windows.Visibility.Collapsed,
                     GetPrivateControl<TabItem>(window, "RawParserTabItem").Visibility);
@@ -123,6 +124,53 @@ public sealed class MainWindowStartupTests
                 Assert.Equal("OK", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
                 Assert.Equal("", GetPrivateControl<TextBlock>(window, "DashboardStatusSymbolTextBlock").Text);
                 Assert.Equal("144.4/130.0 Mbps", GetPrivateControl<TextBlock>(window, "DashboardRateTextBlock").Text);
+            });
+    }
+
+    [Fact]
+    public void FollowLatestRoamSelectsNewRoamsWithoutChangingManualGraphView()
+    {
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            assertWindow: window =>
+            {
+                var realtime = GetPrivateControl<DiagnosticsRealtimeModel>(window, "_realtimeModel");
+                var selection = GetPrivateControl<RoamMarkerSelectionModel>(window, "_roamMarkerSelection");
+                var viewport = GetPrivateControl<GraphViewportModel>(window, "_graphViewport");
+                var follow = GetPrivateControl<CheckBox>(window, "FollowLatestRoamCheckBox");
+                var render = typeof(MainWindow).GetMethod(
+                    "RenderRealtimeGraph",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(render);
+
+                var manualLimits = new GraphAxisLimits(100, 200);
+                viewport.SetManualView(manualLimits);
+                var timestamp = DateTimeOffset.UtcNow.AddSeconds(-3);
+
+                realtime.Apply(CreateRoam(timestamp, "AP-1", "AP-2", "1", "2"));
+                render!.Invoke(window, [true, false]);
+                var firstSelection = selection.SelectedMarkerId;
+
+                realtime.Apply(CreateRoam(timestamp.AddSeconds(1), "AP-2", "AP-3", "2", "3"));
+                render.Invoke(window, [true, false]);
+                var secondSelection = selection.SelectedMarkerId;
+
+                Assert.True(follow.IsChecked);
+                Assert.NotEqual(firstSelection, secondSelection);
+                Assert.Equal(GraphViewportState.ManualView, viewport.State);
+                Assert.Equal(manualLimits, viewport.LastLimits);
+
+                GetPrivateControl<Button>(window, "PreviousRoamButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                Assert.False(follow.IsChecked);
+                Assert.Equal(firstSelection, selection.SelectedMarkerId);
+
+                realtime.Apply(CreateRoam(timestamp.AddSeconds(2), "AP-3", "AP-4", "3", "4"));
+                render.Invoke(window, [true, false]);
+
+                Assert.Equal(firstSelection, selection.SelectedMarkerId);
+                Assert.Equal(GraphViewportState.ManualView, viewport.State);
+                Assert.Equal(manualLimits, viewport.LastLimits);
             });
     }
 
@@ -323,6 +371,42 @@ public sealed class MainWindowStartupTests
         }
 
         Assert.True(condition(), "Monitoring services did not stop before the timeout.");
+    }
+
+    private static WgbPollEvent CreateRoam(
+        DateTimeOffset timestamp,
+        string oldAp,
+        string newAp,
+        string oldRadio,
+        string newRadio)
+    {
+        return new WgbPollEvent(
+            WgbPollEventKind.ParentApChanged,
+            timestamp,
+            new WgbAssociationSnapshot(
+                newAp,
+                $"bssid-{newAp}",
+                "44",
+                "-60",
+                newRadio,
+                TxRate: "144.4",
+                RxRate: "130.0",
+                WgbIp: "192.168.1.20",
+                AssociationStatus: "Associated",
+                CandidateApName: null,
+                CandidateBssid: null),
+            ParseResult: null,
+            RawOutput: null,
+            Message: "roam",
+            OldParentApName: oldAp,
+            NewParentApName: newAp,
+            OldParentBssid: $"bssid-{oldAp}",
+            NewParentBssid: $"bssid-{newAp}",
+            OldChannel: "36",
+            NewChannel: "44",
+            OldRadioId: oldRadio,
+            NewRadioId: newRadio,
+            RoamClassification: WgbRoamClassification.DifferentApDifferentChannel);
     }
 
     private static T GetPrivateControl<T>(MainWindow window, string name)

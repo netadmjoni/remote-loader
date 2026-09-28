@@ -366,6 +366,11 @@
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <WrapPanel Grid.Row="0" HorizontalAlignment="Right" Margin="0,0,0,4">
+                    <CheckBox x:Name="FollowLatestRoamCheckBox"
+                              Content="Follow latest roam"
+                              IsChecked="True"
+                              VerticalAlignment="Center"
+                              Margin="0,0,16,8" />
                     <Button x:Name="PreviousRoamButton"
                             Content="Previous roam"
                             MinWidth="112"

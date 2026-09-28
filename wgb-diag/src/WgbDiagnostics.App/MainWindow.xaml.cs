@@ -68,6 +68,7 @@ public partial class MainWindow : Window
     private bool _engineeringDebugViewsEnabled;
     private bool _normalWgbAssociationShown;
     private bool _normalWgbFailureActive;
+    private string? _latestObservedRoamMarkerId;
 
     public MainWindow(
         ISettingsFileStore settingsFileStore,
@@ -443,12 +444,23 @@ public partial class MainWindow : Window
 
     private void PreviousRoamButton_Click(object sender, RoutedEventArgs e)
     {
+        FollowLatestRoamCheckBox.IsChecked = false;
         SelectRelativeRoam(previous: true);
     }
 
     private void NextRoamButton_Click(object sender, RoutedEventArgs e)
     {
+        FollowLatestRoamCheckBox.IsChecked = false;
         SelectRelativeRoam(previous: false);
+    }
+
+    private void FollowLatestRoamCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        var snapshot = _latestRealtimeSnapshot ?? _realtimeModel.Snapshot(DateTimeOffset.UtcNow);
+        _latestObservedRoamMarkerId = GetLatestRoamMarkerId(snapshot);
+        _roamMarkerSelection.Select(_latestObservedRoamMarkerId);
+        SelectedRoamExpander.IsExpanded = _roamMarkerSelection.HasSelection;
+        RenderRealtimeGraph(force: true, resetZoom: false);
     }
 
     private void ClearSelectedRoamButton_Click(object sender, RoutedEventArgs e)
@@ -516,6 +528,8 @@ public partial class MainWindow : Window
         {
             RawPingViewRadioButton.Checked += PingViewRadioButton_Checked;
         }
+
+        FollowLatestRoamCheckBox.Checked += FollowLatestRoamCheckBox_Checked;
     }
 
     private void InitializeLiveDiagnosticsView()
@@ -1927,7 +1941,12 @@ public partial class MainWindow : Window
     private void SelectRoamMarkerFromRssiClick(MouseButtonEventArgs e)
     {
         var hitTargets = CreateRssiRoamHitTargets();
-        _roamMarkerSelection.SelectNearest(hitTargets, GetRssiPlotDataPixelX(e));
+        var selectedMarkerId = _roamMarkerSelection.SelectNearest(hitTargets, GetRssiPlotDataPixelX(e));
+        if (selectedMarkerId is not null)
+        {
+            FollowLatestRoamCheckBox.IsChecked = false;
+        }
+
         SelectedRoamExpander.IsExpanded = _roamMarkerSelection.HasSelection;
         RenderRealtimeGraph(force: true, resetZoom: false);
     }
@@ -2031,6 +2050,7 @@ public partial class MainWindow : Window
 
         var snapshot = _realtimeModel.Snapshot(now);
         _latestRealtimeSnapshot = snapshot;
+        FollowLatestRoam(snapshot);
         EnsureSelectedRoamStillExists(snapshot);
         ApplyRealtimeSnapshotToStatus(snapshot);
         ApplyLiveWgbStaleState(snapshot, now);
@@ -2054,6 +2074,29 @@ public partial class MainWindow : Window
         RoamTimelineListBox.ItemsSource = snapshot.RoamEvents
             .Select(FormatRoamTimelineEvent)
             .ToArray();
+    }
+
+    private void FollowLatestRoam(DiagnosticsRealtimeSnapshot snapshot)
+    {
+        var latestMarkerId = GetLatestRoamMarkerId(snapshot);
+        if (string.Equals(latestMarkerId, _latestObservedRoamMarkerId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _latestObservedRoamMarkerId = latestMarkerId;
+        if (FollowLatestRoamCheckBox.IsChecked == true && latestMarkerId is not null)
+        {
+            _roamMarkerSelection.Select(latestMarkerId);
+            SelectedRoamExpander.IsExpanded = true;
+        }
+    }
+
+    private static string? GetLatestRoamMarkerId(DiagnosticsRealtimeSnapshot snapshot)
+    {
+        return snapshot.RoamEvents.Count == 0
+            ? null
+            : RoamMarkerSelectionModel.GetStableMarkerId(snapshot.RoamEvents[^1]);
     }
 
     private void EnsureSelectedRoamStillExists(DiagnosticsRealtimeSnapshot snapshot)

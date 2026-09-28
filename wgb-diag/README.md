@@ -11,7 +11,7 @@ The installer build publishes the WPF app as a .NET 8 self-contained `win-x64` a
 Expected artifact:
 
 ```text
-artifacts\installer\WgbDiagnostics-0.1.18-win-x64.msi
+artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi
 ```
 
 ## Installation
@@ -19,25 +19,25 @@ artifacts\installer\WgbDiagnostics-0.1.18-win-x64.msi
 Interactive installation:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.18-win-x64.msi
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi
 ```
 
 Silent installation with desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.18-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
 ```
 
 Silent installation without desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.18-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
 Silent uninstallation using the MSI:
 
 ```powershell
-msiexec /x artifacts\installer\WgbDiagnostics-0.1.18-win-x64.msi /qn /norestart
+msiexec /x artifacts\installer\WgbDiagnostics-0.1.19-win-x64.msi /qn /norestart
 ```
 
 ## Installed locations
@@ -77,6 +77,8 @@ If a newer probe has already succeeded before an older probe times out, WGB Diag
 
 The compact Dashboard shows the current WGB Tx/Rx data rate alongside AP, RSSI, channel, radio, and latest event. Settings can enable a separate Tx/Rx data-rate graph; it uses the existing WGB samples and follows the same time window, autoscroll, zoom, and pan state as the RTT and RSSI graphs.
 
+`Follow latest roam` selects each newly detected roam in Roam Details without changing graph zoom or its visible time window. Previous roam, Next roam, or clicking a roam marker disables following so historical selection remains stable.
+
 Normal diagnostics show operator-relevant packet loss, interruption, recovery, roam, association, disconnect, reconnect, stale/healthy, and warning events. `Enable engineering/debug views` exposes raw ping details, SSH/command lifecycle events, and the Raw / Parser tab. Engineering/debug views and the data-rate graph are disabled by default.
 
 ## Manual GUI regression test
@@ -95,5 +97,6 @@ Realtime graph interaction:
 10. Trigger or load WGB roam output and confirm roam markers appear on the enabled graphs and in the roaming timeline without successful poll lifecycle noise in normal mode.
 11. Confirm the Dashboard shows current AP, RSSI, channel, radio ID, Tx/Rx rate, and latest event.
 12. Enable the data-rate graph and confirm separate Tx and Rx lines follow the same time window, autoscroll, zoom, and pan as RTT and RSSI.
-13. Save SSH and enable passwords with the save checkboxes, reload settings, then use Forget buttons and confirm no cleartext appears in `%LocalAppData%\WgbDiagnostics\appsettings.json` or session logs.
-14. Confirm the Dashboard remains readable at 1366x768.
+13. With Follow latest roam enabled, trigger a roam and confirm its details and marker become selected without changing graph zoom. Use Previous or Next and confirm following turns off and the historical selection remains when another roam arrives.
+14. Save SSH and enable passwords with the save checkboxes, reload settings, then use Forget buttons and confirm no cleartext appears in `%LocalAppData%\WgbDiagnostics\appsettings.json` or session logs.
+15. Confirm the Dashboard remains readable at 1366x768.
