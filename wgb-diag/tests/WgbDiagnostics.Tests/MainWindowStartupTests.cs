@@ -32,7 +32,13 @@ public sealed class MainWindowStartupTests
                 var version = GetPrivateControl<TextBlock>(window, "VersionTextBlock");
                 Assert.Contains("v", version.Text);
                 var dashboardStatus = GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock");
-                Assert.Equal("ICMP NOT CONFIGURED", dashboardStatus.Text);
+                Assert.Equal("SETUP REQUIRED", dashboardStatus.Text);
+                Assert.Equal(
+                    "Monitoring configuration is incomplete",
+                    GetPrivateControl<TextBlock>(window, "DashboardInterruptionTextBlock").Text);
+                Assert.Equal(
+                    "Setup required",
+                    GetPrivateControl<TextBlock>(window, "DashboardWgbStatusTextBlock").Text);
                 var dashboardAdvanced = GetPrivateControl<Expander>(window, "DashboardAdvancedExpander");
                 Assert.False(dashboardAdvanced.IsExpanded);
                 var selectedRoam = GetPrivateControl<Expander>(window, "SelectedRoamExpander");
@@ -178,8 +184,8 @@ public sealed class MainWindowStartupTests
             {
                 var version = new ApplicationVersionInfo(
                     "WGB Diagnostics",
-                    "0.1.28",
-                    "0.1.28+test",
+                    "0.1.29",
+                    "0.1.29+test",
                     "test",
                     ".NET 8",
                     "X64",
@@ -191,7 +197,7 @@ public sealed class MainWindowStartupTests
                         "WGB Diagnostics",
                         Assert.IsType<TextBlock>(about.FindName("ProductNameTextBlock")).Text);
                     Assert.Equal(
-                        "Version 0.1.28",
+                        "Version 0.1.29",
                         Assert.IsType<TextBlock>(about.FindName("ProductVersionTextBlock")).Text);
                     Assert.Equal(
                         AboutWindow.ProjectUrl,
@@ -246,11 +252,14 @@ public sealed class MainWindowStartupTests
     {
         var options = WgbDiagnosticsOptions.CreateDefault();
         options.PingTarget = "10.194.240.10";
+        options.WgbAddress = "10.194.240.11";
+        options.SshUsername = "wgb-admin";
 
         ConstructMainWindowOnSta(
             options,
             assertWindow: window =>
             {
+                GetPrivateControl<PasswordBox>(window, "SshPasswordBox").Password = "ssh-secret";
                 var timestamp = DateTimeOffset.UtcNow;
                 var realtime = GetPrivateControl<DiagnosticsRealtimeModel>(window, "_realtimeModel");
                 realtime.Apply(new IcmpMonitorEvent(
@@ -298,12 +307,15 @@ public sealed class MainWindowStartupTests
     {
         var options = WgbDiagnosticsOptions.CreateDefault();
         options.PingTarget = "10.194.240.10";
+        options.WgbAddress = "10.194.240.11";
+        options.SshUsername = "wgb-admin";
         options.WgbStaleAfterSeconds = 1;
 
         ConstructMainWindowOnSta(
             options,
             assertWindow: window =>
             {
+                GetPrivateControl<PasswordBox>(window, "SshPasswordBox").Password = "ssh-secret";
                 var now = DateTimeOffset.UtcNow;
                 var realtime = GetPrivateControl<DiagnosticsRealtimeModel>(window, "_realtimeModel");
                 realtime.Apply(new IcmpMonitorEvent(
@@ -580,35 +592,83 @@ public sealed class MainWindowStartupTests
     public void DashboardStartWithoutPingTargetStartsNothingAndShowsError()
     {
         var monitoringServices = new TrackingMonitoringServices();
+        string? dialogTitle = null;
+        string? dialogMessage = null;
 
         ConstructMainWindowOnSta(
             WgbDiagnosticsOptions.CreateDefault(),
             assertWindow: window =>
             {
+                SetPrivateField<Action<string, string>>(
+                    window,
+                    "_showWarning",
+                    (title, message) =>
+                    {
+                        dialogTitle = title;
+                        dialogMessage = message;
+                    });
                 GetPrivateControl<Button>(window, "StartMonitoringButton").RaiseEvent(
                     new System.Windows.RoutedEventArgs(Button.ClickEvent));
 
                 Assert.False(monitoringServices.IcmpStarted.Wait(TimeSpan.FromMilliseconds(250)), "ICMP monitoring started without a target.");
                 Assert.False(monitoringServices.WgbStarted.Wait(TimeSpan.FromMilliseconds(250)), "WGB polling started without a ping target.");
+                Assert.Equal(0, GetPrivateControl<TabControl>(window, "MainTabControl").SelectedIndex);
+                Assert.Equal("SETUP REQUIRED", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
+                Assert.Equal("Monitoring setup required", dialogTitle);
+                Assert.Contains("Monitoring cannot start.", dialogMessage);
+                Assert.Contains("- Ping target", dialogMessage);
+                Assert.Contains("- WGB address", dialogMessage);
+                Assert.Contains("- WGB username", dialogMessage);
+                Assert.Contains("- WGB password", dialogMessage);
                 Assert.Equal(
-                    "ICMP NOT CONFIGURED",
-                    GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
-                var errors = GetPrivateControl<ListBox>(window, "ValidationErrorsListBox");
-                Assert.Contains(
-                    errors.Items.Cast<string>(),
-                    error => error.Contains("Ping target not configured", StringComparison.Ordinal));
-                Assert.Contains(
-                    errors.Items.Cast<string>(),
-                    error => error.Contains("WGB address not configured", StringComparison.Ordinal));
-                Assert.Contains(
-                    errors.Items.Cast<string>(),
-                    error => error.Contains("WGB username not configured", StringComparison.Ordinal));
-                Assert.Contains(
-                    errors.Items.Cast<string>(),
-                    error => error.Contains("WGB password not configured", StringComparison.Ordinal));
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<ListBox>(window, "ValidationErrorsListBox").Visibility);
                 Assert.Equal(
                     "Monitoring cannot start. Configure the listed settings before starting monitoring.",
                     GetPrivateControl<TextBlock>(window, "StatusTextBlock").Text);
+                Assert.True(GetPrivateControl<Button>(window, "StartMonitoringButton").IsEnabled);
+                Assert.False(GetPrivateControl<Button>(window, "StopMonitoringButton").IsEnabled);
+            },
+            icmpMonitor: monitoringServices,
+            wgbPollingService: monitoringServices);
+    }
+
+    [Fact]
+    public void DashboardStartWithPingTargetAndMissingWgbConfigurationShowsOneModalAndStaysOnDashboard()
+    {
+        var monitoringServices = new TrackingMonitoringServices();
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.PingTarget = "10.194.240.10";
+        string? dialogMessage = null;
+        var dialogCount = 0;
+
+        ConstructMainWindowOnSta(
+            options,
+            assertWindow: window =>
+            {
+                SetPrivateField<Action<string, string>>(
+                    window,
+                    "_showWarning",
+                    (_, message) =>
+                    {
+                        dialogCount++;
+                        dialogMessage = message;
+                    });
+                GetPrivateControl<Button>(window, "StartMonitoringButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                Assert.False(monitoringServices.IcmpStarted.Wait(TimeSpan.FromMilliseconds(250)));
+                Assert.False(monitoringServices.WgbStarted.Wait(TimeSpan.FromMilliseconds(250)));
+                Assert.Equal(1, dialogCount);
+                Assert.Contains("- WGB address", dialogMessage);
+                Assert.Contains("- WGB username", dialogMessage);
+                Assert.Contains("- WGB password", dialogMessage);
+                Assert.DoesNotContain("- Ping target", dialogMessage);
+                Assert.Equal(0, GetPrivateControl<TabControl>(window, "MainTabControl").SelectedIndex);
+                Assert.Equal("SETUP REQUIRED", GetPrivateControl<TextBlock>(window, "DashboardStatusTextBlock").Text);
+                Assert.Equal(
+                    "WGB configuration is incomplete",
+                    GetPrivateControl<TextBlock>(window, "DashboardInterruptionTextBlock").Text);
                 Assert.True(GetPrivateControl<Button>(window, "StartMonitoringButton").IsEnabled);
                 Assert.False(GetPrivateControl<Button>(window, "StopMonitoringButton").IsEnabled);
             },

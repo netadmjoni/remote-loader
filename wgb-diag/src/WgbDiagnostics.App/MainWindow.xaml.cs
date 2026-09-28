@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private readonly LiveDiagnosticsPresentationModel _liveDiagnostics = new();
     private readonly RoamMarkerSelectionModel _roamMarkerSelection = new();
     private readonly ApplicationVersionInfo _versionInfo = ApplicationVersionInfo.FromAssembly(typeof(MainWindow).Assembly);
+    private Action<string, string> _showWarning;
     private readonly ObservableCollection<LiveDiagnosticsRow> _liveIcmpRows = [];
     private readonly ObservableCollection<LiveDiagnosticsRow> _liveWgbRows = [];
     private readonly LiveDiagnosticsPanelViewport _liveIcmpViewport = new();
@@ -93,6 +94,12 @@ public partial class MainWindow : Window
         _wgbPollingService = wgbPollingService;
         _sessionLogger = sessionLogger;
         _secretProtector = secretProtector;
+        _showWarning = (title, message) => MessageBox.Show(
+            this,
+            message,
+            title,
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
 
         InitializeComponent();
         VersionTextBlock.Text = $"{_versionInfo.ProductName} v{_versionInfo.ProductVersion}";
@@ -152,16 +159,19 @@ public partial class MainWindow : Window
         }
 
         var diagnosticsOptions = ReadSettingsFromForm(out var formErrors);
-        var errors = formErrors
-            .Concat(_validator.Validate(diagnosticsOptions))
-            .Concat(ValidateMonitoringConfiguration(diagnosticsOptions))
-            .ToList();
+        var missingConfiguration = GetMissingMonitoringConfigurationFields();
+        if (missingConfiguration.Count > 0)
+        {
+            ShowMonitoringStartValidation(missingConfiguration, missingConfigurationOnly: true);
+            return;
+        }
 
+        var errors = formErrors.Concat(_validator.Validate(diagnosticsOptions)).ToList();
         if (errors.Count > 0)
         {
-            ShowErrors(
-                errors,
-                "Monitoring cannot start. Configure the listed settings before starting monitoring.");
+            ShowMonitoringStartValidation(
+                errors.Select(error => error.Message).ToList(),
+                missingConfigurationOnly: false);
             return;
         }
 
@@ -1362,13 +1372,53 @@ public partial class MainWindow : Window
             EnablePasswordBox.Password);
     }
 
-    private IReadOnlyList<ConfigurationValidationError> ValidateMonitoringConfiguration(
-        WgbDiagnosticsOptions options)
+    private void ShowMonitoringStartValidation(
+        IReadOnlyList<string> items,
+        bool missingConfigurationOnly)
     {
-        var errors = new List<ConfigurationValidationError>();
-        AddMissingConfigurationError(errors, options.PingTarget, "Ping target not configured.");
-        errors.AddRange(ValidateWgbConfiguration(options));
-        return errors;
+        var heading = missingConfigurationOnly
+            ? "The following settings are not configured:"
+            : "The following settings need attention:";
+        var message = string.Join(
+            Environment.NewLine,
+            "Monitoring cannot start.",
+            "",
+            heading,
+            "",
+            string.Join(Environment.NewLine, items.Select(item => $"- {item}")),
+            "",
+            "Configure them in Settings before starting monitoring.");
+
+        MainTabControl.SelectedIndex = 0;
+        ShowStatus("Monitoring cannot start. Configure the listed settings before starting monitoring.");
+        ApplyDashboardSummary(_latestRealtimeSnapshot ?? _realtimeModel.Snapshot(DateTimeOffset.UtcNow));
+        _showWarning("Monitoring setup required", message);
+    }
+
+    private IReadOnlyList<string> GetMissingMonitoringConfigurationFields()
+    {
+        var fields = new List<string>();
+        AddMissingConfigurationField(fields, PingTargetTextBox.Text, "Ping target");
+        AddMissingConfigurationField(fields, WgbAddressTextBox.Text, "WGB address");
+        AddMissingConfigurationField(fields, SshUsernameTextBox.Text, "WGB username");
+        AddMissingConfigurationField(fields, SshPasswordBox.Password, "WGB password");
+        if (UseEnableModeCheckBox.IsChecked == true)
+        {
+            AddMissingConfigurationField(fields, EnablePasswordBox.Password, "WGB enable password");
+        }
+
+        return fields;
+    }
+
+    private static void AddMissingConfigurationField(
+        ICollection<string> fields,
+        string? value,
+        string field)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            fields.Add(field);
+        }
     }
 
     private IReadOnlyList<ConfigurationValidationError> ValidateWgbConfiguration(
@@ -2562,6 +2612,7 @@ public partial class MainWindow : Window
         var dashboardState = DetermineDashboardStatus(pingStatus, lossThresholdMilliseconds);
         DashboardStatusTextBlock.Text = dashboardState switch
         {
+            "SETUP_REQUIRED" => "SETUP REQUIRED",
             "ICMP_NOT_CONFIGURED" => "ICMP NOT CONFIGURED",
             "DEGRADED" => "WARNING",
             "OUTAGE" => "NETWORK INTERRUPTION",
@@ -2570,6 +2621,7 @@ public partial class MainWindow : Window
         DashboardStatusSymbolTextBlock.Text = dashboardState switch
         {
             "OK" => "",
+            "SETUP_REQUIRED" => "!",
             "DEGRADED" => "!",
             "OUTAGE" => "X",
             _ => "-"
@@ -2578,6 +2630,7 @@ public partial class MainWindow : Window
         var statusForeground = dashboardState switch
         {
             "OK" => System.Windows.Media.Brushes.DarkGreen,
+            "SETUP_REQUIRED" => System.Windows.Media.Brushes.DarkOrange,
             "DEGRADED" => System.Windows.Media.Brushes.DarkOrange,
             "OUTAGE" => System.Windows.Media.Brushes.DarkRed,
             _ => System.Windows.Media.Brushes.DimGray
@@ -2585,6 +2638,7 @@ public partial class MainWindow : Window
         DashboardStatusBorder.Background = dashboardState switch
         {
             "OK" => System.Windows.Media.Brushes.Honeydew,
+            "SETUP_REQUIRED" => System.Windows.Media.Brushes.LemonChiffon,
             "DEGRADED" => System.Windows.Media.Brushes.LemonChiffon,
             "OUTAGE" => System.Windows.Media.Brushes.MistyRose,
             _ => System.Windows.Media.Brushes.WhiteSmoke
@@ -2592,6 +2646,7 @@ public partial class MainWindow : Window
         DashboardStatusBorder.BorderBrush = dashboardState switch
         {
             "OK" => System.Windows.Media.Brushes.SeaGreen,
+            "SETUP_REQUIRED" => System.Windows.Media.Brushes.DarkOrange,
             "DEGRADED" => System.Windows.Media.Brushes.DarkOrange,
             "OUTAGE" => System.Windows.Media.Brushes.Crimson,
             _ => System.Windows.Media.Brushes.DarkGray
@@ -2608,23 +2663,30 @@ public partial class MainWindow : Window
             : "-";
         DashboardInterruptionTextBlock.Text = dashboardState switch
         {
+            "SETUP_REQUIRED" => string.IsNullOrWhiteSpace(PingTargetTextBox.Text)
+                ? "Monitoring configuration is incomplete"
+                : "WGB configuration is incomplete",
             "ICMP_NOT_CONFIGURED" => "ICMP target is not configured",
             "STOPPED" => "Monitoring is not running",
             "STARTING" => "Monitoring is starting",
             _ => "No active interruption"
         };
 
-        CurrentRttTextBlock.Text = dashboardState == "STOPPED"
+        var monitoringUnavailable = dashboardState is "STOPPED" or "SETUP_REQUIRED";
+        CurrentRttTextBlock.Text = monitoringUnavailable
             ? "-"
             : FormatRoundTripTime(pingStatus.CurrentRoundTripTime);
-        ConsecutiveLossTextBlock.Text = dashboardState == "STOPPED"
+        ConsecutiveLossTextBlock.Text = monitoringUnavailable
             ? "-"
             : pingStatus.ConsecutiveLoss.ToString(CultureInfo.InvariantCulture);
         LastOutageTextBlock.Text = FormatDuration(pingStatus.LastOutage);
         LongestOutageTextBlock.Text = FormatDuration(pingStatus.LongestOutage);
-        DashboardWgbStatusTextBlock.Text = dashboardState == "STOPPED"
-            ? "Stopped"
-            : FormatDashboardWgbStatus(snapshot.WgbStatus);
+        DashboardWgbStatusTextBlock.Text = dashboardState switch
+        {
+            "SETUP_REQUIRED" => "Setup required",
+            "STOPPED" => "Stopped",
+            _ => FormatDashboardWgbStatus(snapshot.WgbStatus)
+        };
 
         var latestMarker = snapshot.LatestMeaningfulEvent;
         DashboardLatestEventTextBlock.Text = latestMarker is null
@@ -2660,6 +2722,11 @@ public partial class MainWindow : Window
         PingRealtimeStatus pingStatus,
         int lossThresholdMilliseconds)
     {
+        if (GetMissingMonitoringConfigurationFields().Count > 0)
+        {
+            return "SETUP_REQUIRED";
+        }
+
         if (string.IsNullOrWhiteSpace(PingTargetTextBox.Text))
         {
             return "ICMP_NOT_CONFIGURED";
