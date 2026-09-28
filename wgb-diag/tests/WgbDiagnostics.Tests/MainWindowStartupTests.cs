@@ -78,6 +78,10 @@ public sealed class MainWindowStartupTests
                 Assert.Equal("5", GetPrivateControl<Button>(window, "GraphWindow5MinuteButton").Tag?.ToString());
                 Assert.Equal("10", GetPrivateControl<Button>(window, "GraphWindow10MinuteButton").Tag?.ToString());
                 Assert.Equal("30", GetPrivateControl<Button>(window, "GraphWindow30MinuteButton").Tag?.ToString());
+                Assert.Equal("10000", GetPrivateControl<TextBox>(window, "EventDisplayBufferSizeTextBox").Text);
+                Assert.Equal("100 ms", GetPrivateControl<TextBlock>(window, "LivePingIntervalTextBlock").Text);
+                Assert.Equal("1000 ms", GetPrivateControl<TextBlock>(window, "LivePingTimeoutTextBlock").Text);
+                Assert.Equal("600 ms", GetPrivateControl<TextBlock>(window, "LiveLossThresholdTextBlock").Text);
                 Assert.Null(window.FindName("WgbCommandTextBox"));
                 Assert.Null(window.FindName("WgbLogCollectionEnabledCheckBox"));
                 Assert.Null(window.FindName("TftpTimeoutSecondsTextBox"));
@@ -159,6 +163,7 @@ public sealed class MainWindowStartupTests
         options.WgbLogCollectionEnabled = true;
         options.TftpTimeoutSeconds = 77;
         options.MaximumReceivedFileSizeBytes = 123456;
+        options.EventDisplayBufferSize = 5000;
 
         ConstructMainWindowOnSta(
             options,
@@ -176,6 +181,7 @@ public sealed class MainWindowStartupTests
                 Assert.True(result.WgbLogCollectionEnabled);
                 Assert.Equal(77, result.TftpTimeoutSeconds);
                 Assert.Equal(123456, result.MaximumReceivedFileSizeBytes);
+                Assert.Equal(5000, result.EventDisplayBufferSize);
             });
     }
 
@@ -274,6 +280,44 @@ public sealed class MainWindowStartupTests
                 Assert.Equal(firstSelection, selection.SelectedMarkerId);
                 Assert.Equal(GraphViewportState.ManualView, viewport.State);
                 Assert.Equal(manualLimits, viewport.LastLimits);
+            });
+    }
+
+    [Fact]
+    public void LatestRoamDetailsAndDashboardEventPersistOutsideGraphWindow()
+    {
+        ConstructMainWindowOnSta(
+            WgbDiagnosticsOptions.CreateDefault(),
+            assertWindow: window =>
+            {
+                var realtime = GetPrivateControl<DiagnosticsRealtimeModel>(window, "_realtimeModel");
+                var render = typeof(MainWindow).GetMethod(
+                    "RenderRealtimeGraph",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(render);
+
+                realtime.Apply(CreateRoam(
+                    DateTimeOffset.UtcNow.AddMinutes(-6),
+                    "AP-1",
+                    "AP-2",
+                    "1",
+                    "2"));
+                render!.Invoke(window, [true, false]);
+
+                Assert.NotEqual("-", GetPrivateControl<TextBlock>(window, "SelectedRoamObservedTextBlock").Text);
+                Assert.Equal(
+                    System.Windows.Visibility.Visible,
+                    GetPrivateControl<TextBlock>(window, "SelectedRoamWindowNoticeTextBlock").Visibility);
+                Assert.StartsWith("0 roam markers", GetPrivateControl<TextBlock>(window, "DashboardGraphStatusTextBlock").Text);
+                Assert.Contains("Roam", GetPrivateControl<TextBlock>(window, "DashboardLatestEventTextBlock").Text);
+
+                GetPrivateControl<Button>(window, "ClearSelectedRoamButton").RaiseEvent(
+                    new System.Windows.RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal("-", GetPrivateControl<TextBlock>(window, "SelectedRoamObservedTextBlock").Text);
+                Assert.Equal(
+                    System.Windows.Visibility.Collapsed,
+                    GetPrivateControl<TextBlock>(window, "SelectedRoamWindowNoticeTextBlock").Visibility);
             });
     }
 

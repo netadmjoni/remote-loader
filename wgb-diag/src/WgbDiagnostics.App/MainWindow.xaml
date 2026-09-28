@@ -375,6 +375,7 @@
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <WrapPanel Grid.Row="0" HorizontalAlignment="Right" Margin="0,0,0,4">
                     <CheckBox x:Name="FollowLatestRoamCheckBox"
@@ -395,7 +396,13 @@
                             MinWidth="112"
                             Click="ClearSelectedRoamButton_Click" />
                 </WrapPanel>
-                <UniformGrid Grid.Row="1" Columns="4">
+                <TextBlock Grid.Row="1"
+                           x:Name="SelectedRoamWindowNoticeTextBlock"
+                           Text="Latest roam is outside current graph window"
+                           Foreground="#8A5A00"
+                           Margin="0,0,0,6"
+                           Visibility="Collapsed" />
+                <UniformGrid Grid.Row="2" Columns="4">
                   <StackPanel Margin="0,0,12,6">
                     <TextBlock Text="Observed" Style="{StaticResource MetricLabelStyle}" />
                     <TextBlock x:Name="SelectedRoamObservedTextBlock" Text="-" TextWrapping="Wrap" />
@@ -404,11 +411,11 @@
                     <TextBlock Text="AP" Style="{StaticResource MetricLabelStyle}" />
                     <TextBlock x:Name="SelectedRoamApTextBlock" Text="-" TextWrapping="Wrap" />
                   </StackPanel>
-                  <StackPanel Margin="0,0,12,6">
+                  <StackPanel Margin="0,0,12,6" Opacity="0.68">
                     <TextBlock Text="BSSID" Style="{StaticResource MetricLabelStyle}" />
                     <TextBlock x:Name="SelectedRoamBssidTextBlock" Text="-" TextWrapping="Wrap" />
                   </StackPanel>
-                  <StackPanel Margin="0,0,0,6">
+                  <StackPanel Margin="0,0,0,6" Opacity="0.68">
                     <TextBlock Text="Class" Style="{StaticResource MetricLabelStyle}" />
                     <TextBlock x:Name="SelectedRoamClassTextBlock" Text="-" TextWrapping="Wrap" />
                   </StackPanel>
@@ -480,9 +487,17 @@
                       <TextBlock Text="Ping RTT" Style="{StaticResource MetricLabelStyle}" />
                       <TextBlock x:Name="LiveCurrentRttTextBlock" Text="-" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                    <StackPanel Width="224" Margin="0,0,12,4">
-                      <TextBlock Text="ICMP timing" Style="{StaticResource MetricLabelStyle}" />
-                      <TextBlock x:Name="LiveIcmpTimingTextBlock" Text="100 ms / 1000 ms / 600 ms" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Width="112" Margin="0,0,12,4">
+                      <TextBlock Text="Ping interval" Style="{StaticResource MetricLabelStyle}" />
+                      <TextBlock x:Name="LivePingIntervalTextBlock" Text="100 ms" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Width="112" Margin="0,0,12,4">
+                      <TextBlock Text="Ping timeout" Style="{StaticResource MetricLabelStyle}" />
+                      <TextBlock x:Name="LivePingTimeoutTextBlock" Text="1000 ms" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Width="118" Margin="0,0,12,4">
+                      <TextBlock Text="Loss threshold" Style="{StaticResource MetricLabelStyle}" />
+                      <TextBlock x:Name="LiveLossThresholdTextBlock" Text="600 ms" FontWeight="SemiBold" />
                     </StackPanel>
                     <StackPanel Width="138" Margin="0,0,12,4">
                       <TextBlock Text="Current AP" Style="{StaticResource MetricLabelStyle}" />
@@ -715,6 +730,7 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="*" />
                   <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="Roaming timeline" Style="{StaticResource SectionTitleStyle}" />
                 <ListBox Grid.Row="1" x:Name="RoamTimelineListBox" />
@@ -852,6 +868,7 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Admin / engineering settings" Style="{StaticResource SectionTitleStyle}" />
@@ -909,8 +926,10 @@
                 <CheckBox Grid.Row="20" Grid.Column="1" x:Name="DailyRotationEnabledCheckBox" Margin="0,0,0,8" />
                 <TextBlock Grid.Row="21" Grid.Column="0" Text="Retention days" Style="{StaticResource FieldLabelStyle}" />
                 <TextBox Grid.Row="21" Grid.Column="1" x:Name="RetentionDaysTextBox" />
-                <TextBlock Grid.Row="22" Grid.Column="0" Text="Enable engineering/debug views" Style="{StaticResource FieldLabelStyle}" />
-                <CheckBox Grid.Row="22" Grid.Column="1" x:Name="EnableEngineeringDebugViewsCheckBox" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="22" Grid.Column="0" Text="Live diagnostics display buffer rows" Style="{StaticResource FieldLabelStyle}" />
+                <TextBox Grid.Row="22" Grid.Column="1" x:Name="EventDisplayBufferSizeTextBox" />
+                <TextBlock Grid.Row="23" Grid.Column="0" Text="Enable engineering/debug views" Style="{StaticResource FieldLabelStyle}" />
+                <CheckBox Grid.Row="23" Grid.Column="1" x:Name="EnableEngineeringDebugViewsCheckBox" Margin="0,0,0,8" />
               </Grid>
             </Border>
           </ScrollViewer>

@@ -1149,6 +1149,7 @@ public partial class MainWindow : Window
         LogDirectoryTextBox.Text = options.LogDirectory;
         DailyRotationEnabledCheckBox.IsChecked = options.DailyRotationEnabled;
         RetentionDaysTextBox.Text = options.RetentionDays.ToString(CultureInfo.InvariantCulture);
+        EventDisplayBufferSizeTextBox.Text = options.EventDisplayBufferSize.ToString(CultureInfo.InvariantCulture);
         GraphVisibleMinutesTextBox.Text = options.GraphVisibleMinutes.ToString(CultureInfo.InvariantCulture);
         ShowDataRateGraphCheckBox.IsChecked = options.ShowDataRateGraph;
         EnableEngineeringDebugViewsCheckBox.IsChecked = options.EnableEngineeringDebugViews;
@@ -1213,7 +1214,10 @@ public partial class MainWindow : Window
             IcmpDisplayMode = _liveDiagnostics.IcmpDisplayMode.ToString(),
             WgbDisplayMode = _liveDiagnostics.WgbDisplayMode.ToString(),
             LiveDiagnosticsSplitterPosition = _liveDiagnosticsSplitterPosition,
-            EventDisplayBufferSize = _liveDiagnostics.BufferSize,
+            EventDisplayBufferSize = ReadInt(
+                EventDisplayBufferSizeTextBox,
+                "Live diagnostics display buffer rows",
+                errors),
             WgbLogCollectionEnabled = _wgbLogCollectionEnabled,
             TftpTimeoutSeconds = _tftpTimeoutSeconds,
             MaximumReceivedFileSizeBytes = _maximumReceivedFileSizeBytes
@@ -2091,7 +2095,7 @@ public partial class MainWindow : Window
         ApplyLiveWgbStaleState(snapshot, now);
         var renderPlan = _graphViewport.CreateRenderPlan(nowX);
         UpdateGraphStatus(renderPlan);
-        UpdateSelectedRoamPanel(snapshot);
+        UpdateSelectedRoamPanel(snapshot, renderPlan.XLimits);
 
         if (renderPlan.ShouldRenderPlots)
         {
@@ -2129,29 +2133,32 @@ public partial class MainWindow : Window
 
     private static string? GetLatestRoamMarkerId(DiagnosticsRealtimeSnapshot snapshot)
     {
-        return snapshot.RoamEvents.Count == 0
+        return snapshot.LatestSessionRoam is null
             ? null
-            : RoamMarkerSelectionModel.GetStableMarkerId(snapshot.RoamEvents[^1]);
+            : RoamMarkerSelectionModel.GetStableMarkerId(snapshot.LatestSessionRoam);
     }
 
     private void EnsureSelectedRoamStillExists(DiagnosticsRealtimeSnapshot snapshot)
     {
         if (_roamMarkerSelection.HasSelection
-            && _roamMarkerSelection.GetSelectedRoam(snapshot.RoamEvents) is null)
+            && GetSelectedRoam(snapshot) is null)
         {
             _roamMarkerSelection.Clear();
         }
     }
 
-    private void UpdateSelectedRoamPanel(DiagnosticsRealtimeSnapshot snapshot)
+    private void UpdateSelectedRoamPanel(
+        DiagnosticsRealtimeSnapshot snapshot,
+        GraphAxisLimits visibleLimits)
     {
         PreviousRoamButton.IsEnabled = snapshot.RoamEvents.Count > 0;
         NextRoamButton.IsEnabled = snapshot.RoamEvents.Count > 0;
 
-        var roamEvent = _roamMarkerSelection.GetSelectedRoam(snapshot.RoamEvents);
+        var roamEvent = GetSelectedRoam(snapshot);
         ClearSelectedRoamButton.IsEnabled = roamEvent is not null;
         if (roamEvent is null)
         {
+            SelectedRoamWindowNoticeTextBlock.Visibility = Visibility.Collapsed;
             SetSelectedRoamPanelDetails(
                 observed: "-",
                 ap: "-",
@@ -2164,6 +2171,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        var selectedX = ToPlotX(roamEvent.Timestamp);
+        SelectedRoamWindowNoticeTextBlock.Visibility =
+            FollowLatestRoamCheckBox.IsChecked == true
+            && (selectedX < visibleLimits.MinimumX || selectedX > visibleLimits.MaximumX)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
         var details = SelectedRoamDetailsFormatter.Format(roamEvent);
         SetSelectedRoamPanelDetails(
             details.Observed,
@@ -2174,6 +2188,20 @@ public partial class MainWindow : Window
             details.Rssi,
             details.Rate,
             details.Classification);
+    }
+
+    private RealtimeRoamEvent? GetSelectedRoam(DiagnosticsRealtimeSnapshot snapshot)
+    {
+        var selected = _roamMarkerSelection.GetSelectedRoam(snapshot.RoamEvents);
+        if (selected is not null || snapshot.LatestSessionRoam is null)
+        {
+            return selected;
+        }
+
+        return _roamMarkerSelection.IsSelected(
+            RoamMarkerSelectionModel.GetStableMarkerId(snapshot.LatestSessionRoam))
+                ? snapshot.LatestSessionRoam
+                : null;
     }
 
     private void SetSelectedRoamPanelDetails(
@@ -2454,7 +2482,7 @@ public partial class MainWindow : Window
         CompactWgbRadioTextBlock.Text = $"RSSI {compact.Rssi}, ch {compact.Channel}, radio {compact.RadioId}";
         CompactWgbRatesTextBlock.Text = $"Tx {compact.TxRate}, Rx {compact.RxRate}, {compact.AssociationStatus}";
 
-        var latestRoam = snapshot.RoamEvents.LastOrDefault();
+        var latestRoam = snapshot.LatestSessionRoam;
         LiveIcmpStateTextBlock.Text = string.IsNullOrWhiteSpace(PingTargetTextBox.Text)
             ? "Not configured"
             : snapshot.PingStatus.Status;
@@ -2529,7 +2557,7 @@ public partial class MainWindow : Window
             _ => "No active interruption"
         };
 
-        var latestMarker = snapshot.Markers.LastOrDefault();
+        var latestMarker = snapshot.LatestMeaningfulEvent;
         DashboardLatestEventTextBlock.Text = latestMarker is null
             ? "-"
             : $"{latestMarker.Timestamp.ToLocalTime():HH:mm:ss} {latestMarker.Kind switch
@@ -2540,7 +2568,7 @@ public partial class MainWindow : Window
                 _ => latestMarker.Label
             }}";
 
-        var latestRoam = snapshot.RoamEvents.LastOrDefault();
+        var latestRoam = snapshot.LatestSessionRoam;
         if (latestRoam is null)
         {
             DashboardRoamCorrelationTextBlock.Text = "Latest roam: -";
@@ -2946,8 +2974,9 @@ public partial class MainWindow : Window
     {
         DashboardIcmpTimingTextBlock.Text =
             $"ICMP interval: {options.PingIntervalMilliseconds} ms / timeout: {options.PingTimeoutMilliseconds} ms / threshold: {options.LossThresholdMilliseconds} ms";
-        LiveIcmpTimingTextBlock.Text =
-            $"{options.PingIntervalMilliseconds} ms interval / {options.PingTimeoutMilliseconds} ms timeout / {options.LossThresholdMilliseconds} ms threshold";
+        LivePingIntervalTextBlock.Text = $"{options.PingIntervalMilliseconds} ms";
+        LivePingTimeoutTextBlock.Text = $"{options.PingTimeoutMilliseconds} ms";
+        LiveLossThresholdTextBlock.Text = $"{options.LossThresholdMilliseconds} ms";
     }
 
     private static string FormatMonitorEvent(IcmpMonitorEvent monitorEvent)

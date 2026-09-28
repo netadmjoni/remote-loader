@@ -19,7 +19,7 @@ public sealed record WgbCompactStatusModel(
     public static WgbCompactStatusModel FromSnapshot(DiagnosticsRealtimeSnapshot snapshot)
     {
         var status = snapshot.WgbStatus;
-        var lastRoam = snapshot.RoamEvents.LastOrDefault();
+        var lastRoam = snapshot.LatestSessionRoam;
 
         return new WgbCompactStatusModel(
             Format(status.ParentApName),

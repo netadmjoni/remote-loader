@@ -16,6 +16,8 @@ public sealed class DiagnosticsRealtimeModel
     private RealtimeGraphOptions _options;
     private PingRealtimeStatus _pingStatus = PingRealtimeStatus.Empty;
     private WgbRealtimeStatus _wgbStatus = WgbRealtimeStatus.Empty;
+    private RealtimeRoamEvent? _latestSessionRoam;
+    private RealtimeGraphMarker? _latestMeaningfulEvent;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _latestTimestamp;
 
@@ -56,6 +58,8 @@ public sealed class DiagnosticsRealtimeModel
             _roamEvents.Clear();
             _pingStatus = PingRealtimeStatus.Empty;
             _wgbStatus = WgbRealtimeStatus.Empty;
+            _latestSessionRoam = null;
+            _latestMeaningfulEvent = null;
             _startedAt = null;
             _latestTimestamp = null;
         }
@@ -216,6 +220,8 @@ public sealed class DiagnosticsRealtimeModel
                 BuildDataRatePoints(),
                 _markers.ToArray(),
                 _roamEvents.ToArray(),
+                _latestSessionRoam,
+                _latestMeaningfulEvent,
                 _pingStatus with { Runtime = runtime },
                 wgbStatus,
                 _options);
@@ -425,6 +431,11 @@ public sealed class DiagnosticsRealtimeModel
 
     private void InsertMarker(RealtimeGraphMarker marker)
     {
+        if (_latestMeaningfulEvent is null || marker.Timestamp >= _latestMeaningfulEvent.Timestamp)
+        {
+            _latestMeaningfulEvent = marker;
+        }
+
         if (_markers.Contains(marker))
         {
             return;
@@ -441,6 +452,11 @@ public sealed class DiagnosticsRealtimeModel
 
     private void InsertRoamEvent(RealtimeRoamEvent roamEvent)
     {
+        if (_latestSessionRoam is null || roamEvent.Timestamp >= _latestSessionRoam.Timestamp)
+        {
+            _latestSessionRoam = roamEvent;
+        }
+
         if (_roamEvents.Any(existing => IsSameRoamEvent(existing, roamEvent)))
         {
             return;
@@ -655,6 +671,8 @@ public sealed record DiagnosticsRealtimeSnapshot(
     IReadOnlyList<DataRateGraphPoint> DataRatePoints,
     IReadOnlyList<RealtimeGraphMarker> Markers,
     IReadOnlyList<RealtimeRoamEvent> RoamEvents,
+    RealtimeRoamEvent? LatestSessionRoam,
+    RealtimeGraphMarker? LatestMeaningfulEvent,
     PingRealtimeStatus PingStatus,
     WgbRealtimeStatus WgbStatus,
     RealtimeGraphOptions Options);

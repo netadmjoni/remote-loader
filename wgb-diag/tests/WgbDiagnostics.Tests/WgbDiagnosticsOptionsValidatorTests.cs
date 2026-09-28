@@ -116,7 +116,7 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
         Assert.Contains("ICMP display mode", fields);
         Assert.Contains("WGB display mode", fields);
         Assert.Contains("Live diagnostics splitter", fields);
-        Assert.Contains("Event display buffer size", fields);
+        Assert.Contains("Live diagnostics display buffer rows", fields);
         Assert.Contains("TFTP timeout", fields);
         Assert.Contains("Maximum received file size", fields);
     }
@@ -130,6 +130,19 @@ public sealed class WgbDiagnosticsOptionsValidatorTests
 
         var error = Assert.Single(_validator.Validate(options));
         Assert.Equal("Ping interval", error.Field);
+    }
+
+    [Theory]
+    [InlineData(499)]
+    [InlineData(100001)]
+    public void LiveDiagnosticsBufferRejectsUnsafeSizes(int value)
+    {
+        var options = WgbDiagnosticsOptions.CreateDefault();
+        options.EventDisplayBufferSize = value;
+
+        var error = Assert.Single(_validator.Validate(options));
+
+        Assert.Equal("Live diagnostics display buffer rows", error.Field);
     }
 
     [Fact]

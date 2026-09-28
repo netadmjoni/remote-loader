@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using WgbDiagnostics.Core.Configuration;
 using WgbDiagnostics.Core.Logging;
 using WgbDiagnostics.Core.Monitoring;
@@ -23,7 +24,7 @@ public sealed class DiagnosticSessionLoggerTests
         await logger.StopSessionAsync(CancellationToken.None);
 
         Assert.True(Directory.Exists(session.SessionDirectory));
-        Assert.Contains("wgb_one_20260718_100000", session.SessionDirectory);
+        Assert.Contains($"wgb_one_{clock.UtcNow.ToLocalTime():yyyyMMdd_HHmmss}", session.SessionDirectory);
         Assert.True(File.Exists(Path.Combine(session.SessionDirectory, "config-snapshot.json")));
         Assert.True(File.Exists(Path.Combine(session.SessionDirectory, "session-summary.json")));
     }
@@ -134,6 +135,105 @@ public sealed class DiagnosticSessionLoggerTests
     }
 
     [Fact]
+    public async Task PingLossCsvRecordsEveryFailedProbeOnceWithStateSemantics()
+    {
+        await using var testDirectory = TempDiagnosticDirectory.Create();
+        var logger = new DiagnosticSessionLogger(new FakeDiagnosticClock());
+        var session = await logger.StartSessionAsync(
+            CreateLoggerOptions(testDirectory.Path),
+            CreateConfigSnapshot(),
+            CancellationToken.None);
+        var detectedAt = new DateTimeOffset(2026, 7, 18, 10, 0, 2, TimeSpan.Zero);
+
+        await logger.LogPingEventAsync(Ping(
+            IcmpMonitorEventKind.LossStarted,
+            sequence: 10,
+            consecutiveLoss: 1,
+            lossWindow: 100,
+            timestamp: detectedAt,
+            startedAtMilliseconds: 1000,
+            completedAtMilliseconds: 2000,
+            completionOrder: 12,
+            connectionState: "Loss"));
+        await logger.LogPingEventAsync(Ping(
+            IcmpMonitorEventKind.AlertThresholdReached,
+            sequence: 10,
+            consecutiveLoss: 1,
+            lossWindow: 600,
+            timestamp: detectedAt,
+            startedAtMilliseconds: 1000,
+            completedAtMilliseconds: 2000,
+            completionOrder: 12,
+            connectionState: "Alert"));
+        await logger.LogPingEventAsync(Ping(
+            IcmpMonitorEventKind.PacketLoss,
+            sequence: 11,
+            timestamp: detectedAt.AddMilliseconds(100),
+            appliedToState: false,
+            ignoredReason: "OutOfOrderTimeoutAfterNewerSuccess",
+            startedAtMilliseconds: 1100,
+            completedAtMilliseconds: 2100,
+            completionOrder: 13,
+            connectionState: "OK"));
+        await logger.StopSessionAsync(CancellationToken.None);
+
+        var rows = File.ReadAllLines(Path.Combine(session.SessionDirectory, "ping-losses.csv"));
+
+        Assert.Equal(
+            "probe_started_at,detected_at,sequence,outcome,elapsed_ms,completion_order,applied_to_state,state_consecutive_loss,state_loss_window_ms,ignored_reason,connection_state,message",
+            rows[0]);
+        Assert.Equal(3, rows.Length);
+        Assert.Contains($"{detectedAt.AddSeconds(-1).ToLocalTime():O},{detectedAt.ToLocalTime():O},10,LOSS,1000,12,true,1,100,,Loss,", rows[1]);
+        Assert.Contains(",11,LOSS,1000,13,false,0,0,OutOfOrderTimeoutAfterNewerSuccess,OK,", rows[2]);
+    }
+
+    [Fact]
+    public async Task CsvRawLogsAndSummaryUseLocalIsoTimestampsWithOffset()
+    {
+        await using var testDirectory = TempDiagnosticDirectory.Create();
+        var timestamp = new DateTimeOffset(2026, 7, 18, 10, 0, 0, 194, TimeSpan.Zero);
+        var clock = new FakeDiagnosticClock(timestamp);
+        var logger = new DiagnosticSessionLogger(clock);
+        var session = await logger.StartSessionAsync(
+            CreateLoggerOptions(testDirectory.Path, rawLoggingEnabled: true),
+            CreateConfigSnapshot(),
+            CancellationToken.None);
+
+        await logger.LogPingEventAsync(Ping(
+            IcmpMonitorEventKind.LossStarted,
+            sequence: 1,
+            timestamp: timestamp,
+            startedAtMilliseconds: 0,
+            completedAtMilliseconds: 1000));
+        await logger.LogWgbEventAsync(WgbPoll(
+            milliseconds: 194,
+            txRate: "173 Mbps",
+            rxRate: "144 Mbps",
+            rawOutput: "sample output"));
+        await logger.StopSessionAsync(CancellationToken.None);
+
+        var expectedPingTimestamp = timestamp.ToLocalTime().ToString("O");
+        var pingRow = File.ReadAllLines(Path.Combine(session.SessionDirectory, "ping-events.csv"))[1];
+        var rawPing = File.ReadAllText(Path.Combine(session.SessionDirectory, "raw-ping.log"));
+        var wgbTimestamp = new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero)
+            .AddMilliseconds(194)
+            .ToLocalTime()
+            .ToString("O");
+        var wgbRow = File.ReadAllLines(Path.Combine(session.SessionDirectory, "wgb-samples.csv"))[1];
+        var rawWgb = File.ReadAllText(Path.Combine(session.SessionDirectory, "raw-wgb.log"));
+
+        Assert.StartsWith($"{expectedPingTimestamp},", pingRow);
+        Assert.Contains(expectedPingTimestamp, rawPing);
+        Assert.StartsWith($"{wgbTimestamp},", wgbRow);
+        Assert.Contains(wgbTimestamp, rawWgb);
+
+        using var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(session.SessionDirectory, "session-summary.json")));
+        var startedAt = summary.RootElement.GetProperty("startedAt").GetDateTimeOffset();
+        Assert.Equal(timestamp.ToLocalTime(), startedAt);
+        Assert.Equal(timestamp.ToLocalTime().Offset, startedAt.Offset);
+    }
+
+    [Fact]
     public async Task WgbSampleCsvContainsEveryValidPoll()
     {
         await using var testDirectory = TempDiagnosticDirectory.Create();
@@ -161,19 +261,24 @@ public sealed class DiagnosticSessionLoggerTests
     public async Task DailyRotationCreatesDatedFilesAfterDateChanges()
     {
         await using var testDirectory = TempDiagnosticDirectory.Create();
-        var clock = new FakeDiagnosticClock(new DateTimeOffset(2026, 7, 18, 23, 59, 0, TimeSpan.Zero));
+        var firstLocal = CreateLocalTimestamp(2026, 7, 18, 23, 59, 0);
+        var secondLocal = CreateLocalTimestamp(2026, 7, 19, 0, 0, 1);
+        var clock = new FakeDiagnosticClock(firstLocal.ToUniversalTime());
         var logger = new DiagnosticSessionLogger(clock);
         var session = await logger.StartSessionAsync(
             CreateLoggerOptions(testDirectory.Path, dailyRotationEnabled: true),
             CreateConfigSnapshot(),
             CancellationToken.None);
 
-        await logger.LogPingEventAsync(Ping(IcmpMonitorEventKind.LossStarted, sequence: 1));
-        clock.UtcNow = new DateTimeOffset(2026, 7, 19, 0, 0, 1, TimeSpan.Zero);
+        await logger.LogPingEventAsync(Ping(
+            IcmpMonitorEventKind.LossStarted,
+            sequence: 1,
+            timestamp: firstLocal));
+        clock.UtcNow = secondLocal.ToUniversalTime();
         await logger.LogPingEventAsync(Ping(
             IcmpMonitorEventKind.AlertThresholdReached,
             sequence: 2,
-            timestamp: new DateTimeOffset(2026, 7, 19, 0, 0, 1, TimeSpan.Zero)));
+            timestamp: secondLocal));
         await logger.StopSessionAsync(CancellationToken.None);
 
         Assert.True(File.Exists(Path.Combine(session.SessionDirectory, "ping-events.csv")));
@@ -280,6 +385,8 @@ public sealed class DiagnosticSessionLoggerTests
         string? ignoredReason = null,
         long highestSequenceAppliedToState = 0,
         long completionOrder = 0,
+        long startedAtMilliseconds = 0,
+        long completedAtMilliseconds = 0,
         string connectionState = "Unknown")
     {
         return new IcmpMonitorEvent(
@@ -290,6 +397,8 @@ public sealed class DiagnosticSessionLoggerTests
             consecutiveLoss,
             lossWindow,
             message,
+            StartedAtMilliseconds: startedAtMilliseconds,
+            CompletedAtMilliseconds: completedAtMilliseconds,
             CompletionOrder: completionOrder,
             AppliedToState: appliedToState,
             IgnoredReason: ignoredReason,
@@ -297,7 +406,11 @@ public sealed class DiagnosticSessionLoggerTests
             ConnectionState: connectionState);
     }
 
-    private static WgbPollEvent WgbPoll(int milliseconds, string txRate, string rxRate)
+    private static WgbPollEvent WgbPoll(
+        int milliseconds,
+        string txRate,
+        string rxRate,
+        string? rawOutput = null)
     {
         return new WgbPollEvent(
             WgbPollEventKind.PollSucceeded,
@@ -315,8 +428,20 @@ public sealed class DiagnosticSessionLoggerTests
                 CandidateApName: null,
                 CandidateBssid: null),
             ParseResult: null,
-            RawOutput: null,
+            RawOutput: rawOutput,
             Message: null);
+    }
+
+    private static DateTimeOffset CreateLocalTimestamp(
+        int year,
+        int month,
+        int day,
+        int hour,
+        int minute,
+        int second)
+    {
+        var localDateTime = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Unspecified);
+        return new DateTimeOffset(localDateTime, TimeZoneInfo.Local.GetUtcOffset(localDateTime));
     }
 
     private sealed class FakeDiagnosticClock : IDiagnosticClock

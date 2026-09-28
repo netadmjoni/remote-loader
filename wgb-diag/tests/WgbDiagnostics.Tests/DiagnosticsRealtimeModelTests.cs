@@ -399,6 +399,33 @@ public sealed class DiagnosticsRealtimeModelTests
     }
 
     [Fact]
+    public void LatestSessionRoamAndMeaningfulEventSurviveGraphWindowTrimming()
+    {
+        var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(
+            TimeSpan.FromMinutes(1),
+            MaxDataPoints: 100,
+            MaxMarkers: 100,
+            WgbStaleAfter: TimeSpan.FromSeconds(5)));
+
+        model.Apply(ParentChanged(seconds: 0));
+
+        var snapshot = model.Snapshot(BaseTimestamp.AddSeconds(90));
+
+        Assert.Empty(snapshot.Markers);
+        Assert.Empty(snapshot.RoamEvents);
+        Assert.NotNull(snapshot.LatestSessionRoam);
+        Assert.Equal("ap-b", snapshot.LatestSessionRoam.NewParentApName);
+        Assert.NotNull(snapshot.LatestMeaningfulEvent);
+        Assert.Equal(RealtimeGraphMarkerKind.ParentApChanged, snapshot.LatestMeaningfulEvent.Kind);
+
+        model.Reset();
+        snapshot = model.Snapshot(BaseTimestamp.AddSeconds(91));
+
+        Assert.Null(snapshot.LatestSessionRoam);
+        Assert.Null(snapshot.LatestMeaningfulEvent);
+    }
+
+    [Fact]
     public void MaxDataPointsAndMarkersLimitGraphState()
     {
         var model = new DiagnosticsRealtimeModel(new RealtimeGraphOptions(

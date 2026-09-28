@@ -200,7 +200,9 @@ public sealed class WgbDiagnosticsOptionsValidator : IConfigurationValidator<Wgb
     {
         if (value is < 500 or > 100000)
         {
-            errors.Add(new ConfigurationValidationError("Event display buffer size", "Event display buffer size must be between 500 and 100000 rows."));
+            errors.Add(new ConfigurationValidationError(
+                "Live diagnostics display buffer rows",
+                "Live diagnostics display buffer must be between 500 and 100000 rows."));
         }
     }
 }

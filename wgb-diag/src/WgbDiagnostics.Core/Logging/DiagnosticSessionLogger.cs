@@ -55,7 +55,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
 
             var sessionDirectory = Path.Combine(
                 root,
-                $"{SanitizePathSegment(options.DeviceOrTarget)}_{startedAt.UtcDateTime:yyyyMMdd_HHmmss}");
+                $"{SanitizePathSegment(options.DeviceOrTarget)}_{startedAt.ToLocalTime():yyyyMMdd_HHmmss}");
             Directory.CreateDirectory(sessionDirectory);
 
             var state = new SessionState(
@@ -185,6 +185,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                 SingleWriter = false
             });
         private readonly Dictionary<string, RotatingLogWriter> _writers = [];
+        private readonly HashSet<(long Sequence, long StartedAt, long CompletedAt, DateTimeOffset Timestamp)> _loggedPingLosses = [];
         private Task? _writerTask;
         private IcmpMonitorEvent? _lastSuccessfulPing;
         private long _lastLoggedSuccessfulPingSequence;
@@ -275,6 +276,8 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
 
         public void WritePingEvent(IcmpMonitorEvent monitorEvent)
         {
+            WritePingLoss(monitorEvent);
+
             var eventName = MapPingEventName(monitorEvent);
             if (eventName is not null)
             {
@@ -300,7 +303,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
             {
                 WriteRaw(
                     "raw-ping",
-                    $"{monitorEvent.Timestamp:O} #{monitorEvent.SequenceNumber} {FormatRawPingEventName(monitorEvent)} rtt={monitorEvent.RoundTripTime?.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) ?? "-"} loss={monitorEvent.ConsecutiveLoss} window={monitorEvent.EstimatedLossWindowMilliseconds} started_ms={monitorEvent.StartedAtMilliseconds} completed_ms={monitorEvent.CompletedAtMilliseconds} completion_order={monitorEvent.CompletionOrder} appliedToState={FormatBoolean(monitorEvent.AppliedToState)} ignoredReason={monitorEvent.IgnoredReason ?? ""} highestSequenceAppliedToState={monitorEvent.HighestSequenceAppliedToState} highestCompletedSequence={monitorEvent.HighestCompletedSequence} connectionState={monitorEvent.ConnectionState} {Scrub(monitorEvent.Message)}",
+                    $"{FormatLogTimestamp(monitorEvent.Timestamp)} #{monitorEvent.SequenceNumber} {FormatRawPingEventName(monitorEvent)} rtt={monitorEvent.RoundTripTime?.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) ?? "-"} loss={monitorEvent.ConsecutiveLoss} window={monitorEvent.EstimatedLossWindowMilliseconds} started_ms={monitorEvent.StartedAtMilliseconds} completed_ms={monitorEvent.CompletedAtMilliseconds} completion_order={monitorEvent.CompletionOrder} appliedToState={FormatBoolean(monitorEvent.AppliedToState)} ignoredReason={monitorEvent.IgnoredReason ?? ""} highestSequenceAppliedToState={monitorEvent.HighestSequenceAppliedToState} highestCompletedSequence={monitorEvent.HighestCompletedSequence} connectionState={monitorEvent.ConnectionState} {Scrub(monitorEvent.Message)}",
                     monitorEvent.Timestamp);
             }
         }
@@ -380,7 +383,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                 && pollEvent.Kind == WgbPollEventKind.PollSucceeded
                 && !string.IsNullOrWhiteSpace(pollEvent.RawOutput))
             {
-                WriteRaw("raw-wgb", $"{pollEvent.Timestamp:O} {pollEvent.Kind}{Environment.NewLine}{Scrub(pollEvent.RawOutput)}", pollEvent.Timestamp);
+                WriteRaw("raw-wgb", $"{FormatLogTimestamp(pollEvent.Timestamp)} {pollEvent.Kind}{Environment.NewLine}{Scrub(pollEvent.RawOutput)}", pollEvent.Timestamp);
             }
         }
 
@@ -445,6 +448,46 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                 monitorEvent.Timestamp);
         }
 
+        private void WritePingLoss(IcmpMonitorEvent monitorEvent)
+        {
+            if (monitorEvent.Kind is not (IcmpMonitorEventKind.PacketLoss
+                or IcmpMonitorEventKind.LossStarted
+                or IcmpMonitorEventKind.Loss
+                or IcmpMonitorEventKind.Error)
+                || !_loggedPingLosses.Add((
+                    monitorEvent.SequenceNumber,
+                    monitorEvent.StartedAtMilliseconds,
+                    monitorEvent.CompletedAtMilliseconds,
+                    monitorEvent.Timestamp)))
+            {
+                return;
+            }
+
+            var elapsedMilliseconds = Math.Max(
+                0,
+                monitorEvent.CompletedAtMilliseconds - monitorEvent.StartedAtMilliseconds);
+            var probeStartedAt = monitorEvent.Timestamp - TimeSpan.FromMilliseconds(elapsedMilliseconds);
+            var outcome = monitorEvent.Kind == IcmpMonitorEventKind.Error ? "ERROR" : "LOSS";
+
+            WriteLine(
+                "ping-losses",
+                "probe_started_at,detected_at,sequence,outcome,elapsed_ms,completion_order,applied_to_state,state_consecutive_loss,state_loss_window_ms,ignored_reason,connection_state,message",
+                CsvRow(
+                    probeStartedAt,
+                    monitorEvent.Timestamp,
+                    monitorEvent.SequenceNumber.ToString(CultureInfo.InvariantCulture),
+                    outcome,
+                    elapsedMilliseconds.ToString(CultureInfo.InvariantCulture),
+                    monitorEvent.CompletionOrder.ToString(CultureInfo.InvariantCulture),
+                    FormatBoolean(monitorEvent.AppliedToState),
+                    monitorEvent.ConsecutiveLoss.ToString(CultureInfo.InvariantCulture),
+                    monitorEvent.EstimatedLossWindowMilliseconds.ToString(CultureInfo.InvariantCulture),
+                    monitorEvent.IgnoredReason,
+                    monitorEvent.ConnectionState,
+                    Scrub(monitorEvent.Message)),
+                monitorEvent.Timestamp);
+        }
+
         private async Task ProcessQueueAsync()
         {
             await foreach (var item in _channel.Reader.ReadAllAsync())
@@ -457,8 +500,8 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
         {
             var summary = new
             {
-                startedAt = Info.StartedAt,
-                stoppedAt = _clock.UtcNow,
+                startedAt = Info.StartedAt.ToLocalTime(),
+                stoppedAt = _clock.UtcNow.ToLocalTime(),
                 sessionDirectory = Info.SessionDirectory,
                 pingEvents = _pingEvents,
                 wgbEvents = _wgbEvents,
@@ -492,7 +535,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
                 name,
                 extension,
                 header,
-                Info.StartedAt.UtcDateTime.Date,
+                Info.StartedAt.ToLocalTime().Date,
                 _options.DailyRotationEnabled);
             _writers[key] = writer;
             return writer;
@@ -556,7 +599,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
 
         private void EnsureWriter(DateTimeOffset timestamp)
         {
-            var date = _dailyRotationEnabled ? timestamp.UtcDateTime.Date : _initialDate;
+            var date = _dailyRotationEnabled ? timestamp.ToLocalTime().Date : _initialDate;
             if (_writer is not null && date == _currentDate)
             {
                 return;
@@ -637,7 +680,7 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
         var text = value switch
         {
             null => "",
-            DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("O", CultureInfo.InvariantCulture),
+            DateTimeOffset dateTimeOffset => FormatLogTimestamp(dateTimeOffset),
             _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? ""
         };
 
@@ -647,5 +690,10 @@ public sealed class DiagnosticSessionLogger : IDiagnosticSessionLogger
         }
 
         return $"\"{text.Replace("\"", "\"\"")}\"";
+    }
+
+    private static string FormatLogTimestamp(DateTimeOffset timestamp)
+    {
+        return timestamp.ToLocalTime().ToString("O", CultureInfo.InvariantCulture);
     }
 }

@@ -11,7 +11,7 @@ The installer build publishes the WPF app as a .NET 8 self-contained `win-x64` a
 Expected artifact:
 
 ```text
-artifacts\installer\WgbDiagnostics-0.1.22-win-x64.msi
+artifacts\installer\WgbDiagnostics-0.1.23-win-x64.msi
 ```
 
 ## Installation
@@ -19,25 +19,25 @@ artifacts\installer\WgbDiagnostics-0.1.22-win-x64.msi
 Interactive installation:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.22-win-x64.msi
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.23-win-x64.msi
 ```
 
 Silent installation with desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.22-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.23-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=1
 ```
 
 Silent installation without desktop shortcut:
 
 ```powershell
-msiexec /i artifacts\installer\WgbDiagnostics-0.1.22-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i artifacts\installer\WgbDiagnostics-0.1.23-win-x64.msi /qn /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
 Silent uninstallation using the MSI:
 
 ```powershell
-msiexec /x artifacts\installer\WgbDiagnostics-0.1.22-win-x64.msi /qn /norestart
+msiexec /x artifacts\installer\WgbDiagnostics-0.1.23-win-x64.msi /qn /norestart
 ```
 
 ## Installed locations
@@ -73,11 +73,15 @@ Loss alert threshold: 600 ms
 
 If a newer probe has already succeeded before an older probe times out, WGB Diagnostics records a `PACKET_LOSS` event with `applied_to_state=false`. This increments lost-probe statistics and appears as operator-friendly packet loss in normal diagnostics; engineering/debug views retain the internal timeout classification. It does not create `LOSS_START`, `ALERT`, `RECOVER`, an outage duration, or an active interruption.
 
+`ping-losses.csv` records each failed probe once, independently of whether it affected connectivity state. Adjacent sequence numbers can therefore be analyzed as a raw probe-loss burst without changing the meaning of `consecutive_loss` or `loss_window_ms` in `ping-events.csv`. See [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md).
+
 ## Dashboard and diagnostics views
 
 The compact Dashboard shows the current WGB Tx/Rx data rate alongside AP, RSSI, channel, radio, and latest event. Settings can enable a separate Tx/Rx data-rate graph; it uses the existing WGB samples and follows the same time window, autoscroll, zoom, and pan state as the RTT and RSSI graphs.
 
-`Follow latest roam` selects each newly detected roam in Roam Details without changing graph zoom or its visible time window. Previous roam, Next roam, or clicking a roam marker disables following so historical selection remains stable.
+`Follow latest roam` selects each newly detected roam in Roam Details without changing graph zoom or its visible time window. The latest roam details remain available for the current session after its marker leaves the graph window. Previous roam, Next roam, or clicking a roam marker disables following so historical selection remains stable.
+
+The locked Admin / Engineering settings include the Live diagnostics display buffer. The default is 10000 rows and accepted values are limited to 500-100000 rows.
 
 Normal Events / Diagnostics shows only Live diagnostics with operator-relevant packet loss, interruption, recovery, roam, association, disconnect, reconnect, stale/healthy, and real failure events. Expected parser details such as IW9167 RSSI magnitude normalization are hidden there. `Enable engineering/debug views` exposes the ICMP, WGB, Roam, and Raw / Parser tabs together with raw ping details, parser messages, and SSH/command lifecycle events. Engineering/debug views and the data-rate graph are disabled by default.
 
@@ -86,8 +90,8 @@ Normal Events / Diagnostics shows only Live diagnostics with operator-relevant p
 Realtime graph interaction:
 
 1. Press Start and confirm that both ping monitoring and WGB polling begin.
-2. Confirm the graph window starts at 10 minutes.
-3. Use the 1, 5, 10, 30, and 60 minute presets and confirm all enabled graph X-axes change together.
+2. Confirm the graph window starts at 5 minutes.
+3. Use the 1, 2, 3, 5, and 10 minute presets and confirm all enabled graph X-axes change together. Confirm 30 minutes remains available under Tools / Advanced.
 4. Zoom with the mouse wheel and pan by dragging a graph; confirm all enabled graphs keep the same time window.
 5. Pause the graph, let monitoring continue, then resume and confirm autoscroll/manual view state behaves predictably.
 6. Click Reset zoom and confirm the view returns to the current time window with a sensible Y-scale.
@@ -97,6 +101,6 @@ Realtime graph interaction:
 10. Trigger or load WGB roam output and confirm roam markers appear on the enabled graphs without successful poll lifecycle or expected RSSI-normalization messages in normal Live diagnostics.
 11. Confirm the Dashboard shows current AP, RSSI, channel, radio ID, Tx/Rx rate, and latest event.
 12. Enable the data-rate graph and confirm separate Tx and Rx lines follow the same time window, autoscroll, zoom, and pan as RTT and RSSI.
-13. With Follow latest roam enabled, trigger a roam and confirm its details and marker become selected without changing graph zoom. Use Previous or Next and confirm following turns off and the historical selection remains when another roam arrives.
+13. With Follow latest roam enabled, trigger a roam and confirm its details and marker become selected without changing graph zoom. Let the marker leave the graph window and confirm the details and Dashboard Last event remain. Use Previous or Next and confirm following turns off and the historical selection remains when another roam arrives.
 14. Save SSH and enable passwords with the save checkboxes, reload settings, then use Forget buttons and confirm no cleartext appears in `%LocalAppData%\WgbDiagnostics\appsettings.json` or session logs.
 15. Confirm the Dashboard remains readable at 1366x768.
